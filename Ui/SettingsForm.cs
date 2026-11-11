@@ -486,7 +486,7 @@ public sealed class SettingsForm : Form
 
         page.Controls.Add(MakeLabel("主题", 0, 4, Theme.Text, Theme.Ui(9.5f)));
 
-        _rbDark = MakeRadio("深色（默认，与 NIKKE_GM 一致）", 0, 36);
+        _rbDark = MakeRadio("深色", 0, 36);
         _rbLight = MakeRadio("浅色", 0, 66);
         _rbSystem = MakeRadio("跟随系统", 0, 96);
 
@@ -501,17 +501,7 @@ public sealed class SettingsForm : Form
         _rbLight.CheckedChanged += (_, _) => { if (_rbLight.Checked) _work.ThemeMode = "light"; };
         _rbSystem.CheckedChanged += (_, _) => { if (_rbSystem.Checked) _work.ThemeMode = "system"; };
 
-        var tip = new Label
-        {
-            Text = "关闭设置后立即生效，不需要重启。\r\n浅色/深色会连标题栏一起换。",
-            Location = new Point(0, 140),
-            Size = new Size(520, 50),
-            ForeColor = Theme.TextFaint,
-            BackColor = Color.Transparent,
-            Font = Theme.Ui(8.5f)
-        };
-
-        page.Controls.AddRange(new Control[] { _rbDark, _rbLight, _rbSystem, tip });
+        page.Controls.AddRange(new Control[] { _rbDark, _rbLight, _rbSystem });
         return page;
     }
 
@@ -718,13 +708,8 @@ public sealed class SettingsForm : Form
             BackColor = Color.Transparent,
             Font = Theme.Ui(9f),
             Text =
-$@"版本    {Application.ProductVersion}
+$@"版本    {Application.ProductVersion.Split('+')[0]}
 作者    {_work.Author}
-
-参考
-· EpinelPS —— 本机私服服务端
-· NIKKE_GM —— 界面风格来源
-· 《双服启动器与广告页修复复用指南》
 
 这个工具只做环境切换：改 hosts、装/卸根证书、起停本地服务、清理启动器新闻页。
 不修改游戏文件，不读写存档，不注入进程。

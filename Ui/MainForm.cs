@@ -10,7 +10,6 @@ public sealed class MainForm : Form
     GlassPanel _root = null!;
     Panel _statusBar = null!;
     Label _lblMode = null!;
-    Label _lblModeSub = null!;
     Label _lblOfficial = null!;
     Label _lblPrivate = null!;
     ListView _list = null!;
@@ -88,7 +87,7 @@ public sealed class MainForm : Form
         // 高度按内容反推：根内边距 24 + 标题 112 + 路径 114 + 列表 11 行 × 40 + 卡片内边距 44
         // + 日志 104 + 底栏 84 ≈ 922。行高由字高实测得出（见 BuildChecks），
         // 这里留出 11 行全部可见的空间，否则最后一行会被卡片的圆角 Region 裁掉半截。
-        ClientSize = new Size(980, 946);
+        ClientSize = new Size(980, 906);
         MinimumSize = new Size(930, 960);
 
         // 小屏兜底：1080p 带任务栏只剩约 1040，窗口放不下时往下压，
@@ -114,7 +113,7 @@ public sealed class MainForm : Form
             RowCount = 5,
             BackColor = Color.Transparent
         };
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 114));
         // 列表用 Percent 吃满剩余：定死高度（算过 352）实测仍会差几像素出滚动条，
         // 而 Percent 在窗口拉大时还会跟着长。日志给 130 压掉多余空白。
@@ -167,8 +166,6 @@ public sealed class MainForm : Form
         // 看起来就是「字没显示全」（用户截图里标题上下沿是平的）。
         var titleFont = Theme.Ui(19f, FontStyle.Bold);
         var titleH = TextRenderer.MeasureText("环境不完整", titleFont).Height;
-        var subFont = Theme.Ui(10f);
-        var subH = TextRenderer.MeasureText("缺的那部分会在下次启动时自动补齐", subFont).Height;
 
         _lblMode = new Label
         {
@@ -179,19 +176,7 @@ public sealed class MainForm : Form
             AutoSize = false,
             Height = titleH,
             TextAlign = ContentAlignment.MiddleLeft,
-            Location = new Point(16, 0)
-        };
-        _lblModeSub = new Label
-        {
-            Text = "",
-            Font = subFont,
-            ForeColor = Theme.TextDim,
-            BackColor = Color.Transparent,
-            AutoSize = false,
-            Height = subH + 2,
-            TextAlign = ContentAlignment.MiddleLeft,
-            // 标题下沿再留 8px，否则副标题贴着标题，视觉上像被压住
-            Location = new Point(18, titleH + 8)
+            Location = new Point(16, 3)
         };
 
         // 设置入口放右上角，用齿轮图标；比底部文字链接更符合通用习惯
@@ -215,12 +200,10 @@ public sealed class MainForm : Form
         p.Resize += (_, _) =>
         {
             _lblMode.Width = Math.Max(120, p.Width - 80);
-            _lblModeSub.Width = Math.Max(120, p.Width - 80);
         };
 
         p.Controls.Add(_statusBar);
         p.Controls.Add(_lblMode);
-        p.Controls.Add(_lblModeSub);
         p.Controls.Add(btnSettings);
         return p;
     }
@@ -529,14 +512,6 @@ public sealed class MainForm : Form
         _statusBar.BackColor = s.Mode switch { 0 => Theme.Good, 1 => Theme.Info, _ => Theme.Warn };
         _lblMode.Text = s.ModeText;
         _lblMode.ForeColor = s.Mode switch { 0 => Theme.Good, 1 => Theme.Info, _ => Theme.Warn };
-        _lblModeSub.Text = s.Mode switch
-        {
-            0 => s.OfficialLobby == 0
-                    ? "还没有 lobby 入口，点「启动官服」会自动探测并补上"
-                    : $"{s.OfficialLobby} 条 lobby 入口 → {s.LobbyIp}",
-            1 => $"{_cfg.PrivateHosts.Length} 个域名指向本机 · 证书已装 · 443 监听中",
-            _ => "缺的那部分会在下次启动时自动补齐"
-        };
 
         _lblOfficial.Text = "官服    " + (_cfg.OfficialRoot ?? "(未设置)");
         _lblPrivate.Text = "私服    " + (_cfg.PrivateRoot ?? "(未设置)");

@@ -16,6 +16,40 @@ internal static class Program
     {
         AppLog.Start(); // 先开日志，崩溃时才有东西可查
 
+        // 诊断用：把主窗口离屏渲染成 PNG。被全屏游戏盖住时截图工具抓不到，
+        // DrawToBitmap 走 WM_PRINT，不依赖前台和遮挡，做布局核对最可靠。
+        if (args.Length > 1 && args[0].Equals("--shot", StringComparison.OrdinalIgnoreCase))
+        {
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Theme.Apply(ConfigStore.Load()?.ThemeMode ?? "light");
+
+            var path = args[1];
+            // 可选第二个参数 = 设置页序号（0 设置/1 路径/2 界面/3 维护/4 关于）
+            var settingsPage = args.Length > 2 && int.TryParse(args[2], out var pg) ? pg : -1;
+            Form f = settingsPage >= 0
+                ? new SettingsForm(ConfigStore.Load() ?? new AppConfig(), settingsPage)
+                : new MainForm();
+            f.Shown += (_, _) => f.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    var bmp = new Bitmap(f.Width, f.Height);
+                    f.DrawToBitmap(bmp, new Rectangle(0, 0, f.Width, f.Height));
+                    bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                    bmp.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    try { File.WriteAllText(path + ".err", ex.ToString()); } catch { }
+                }
+                f.Close();
+            }));
+            Application.Run(f);
+            return 0;
+        }
+
         // 诊断用：直接打开设置窗口，便于截图核对布局
         if (args.Length > 0 && args[0].Equals("--settings", StringComparison.OrdinalIgnoreCase))
         {

@@ -28,12 +28,22 @@ public static class HostsManager
 
     public static bool HasBlock() => HasBlock(ReadLines());
 
-    /// <summary>区块内容是否和当前配置一致 —— 配置里改过域名时才需要重写。</summary>
+    /// <summary>区块内容是否和当前配置一致，且位置在文件最前。</summary>
     public static bool IsBlockCurrent(AppConfig cfg)
     {
         var lines = ReadLines();
         var start = lines.FindIndex(l => l.StartsWith(MarkerBegin, StringComparison.Ordinal));
         if (start < 0) return false;
+
+        // hosts 对同名域名只取第一条。官方 IP 常被 OfficialPins / 加速器 / ServerSelector
+        // 写在文件前面，区块一旦落在后面就完全失效，客户端会连到官方服务器。
+        for (var i = 0; i < start; i++)
+        {
+            var t = lines[i].Trim();
+            if (t.Length == 0 || t.StartsWith('#')) continue;
+            return false;
+        }
+
         var end = lines.FindIndex(start + 1, l => l.StartsWith(MarkerEnd, StringComparison.Ordinal));
         if (end < 0) return false;
 
@@ -92,19 +102,32 @@ public static class HostsManager
         catch { }
     }
 
-    /// <summary>写入私服区块：先摘旧块再写新块，等价于“恢复 + 启用”一次完成。</summary>
+    /// <summary>
+    /// 写入私服区块：先摘旧块，再把新块插到文件最前面。
+    /// 必须放最前 —— hosts 只认第一条，官方 IP 段落通常就在文件开头
+    /// （OfficialPins / 加速器 / ServerSelector 都会写），追加到末尾会被它们压制。
+    /// </summary>
     public static string Enable(AppConfig cfg)
     {
         var lines = StripBlock(ReadLines());
         var bak = Backup("");
 
-        if (lines.Count > 0 && lines[^1].Trim().Length != 0) lines.Add("");
-        lines.Add($"{MarkerBegin} session={DateTime.Now:yyyyMMddHHmmss} time={DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        var block = new List<string>
+        {
+            $"{MarkerBegin} session={DateTime.Now:yyyyMMddHHmmss} time={DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+        };
         foreach (var d in cfg.PrivateHosts)
-            lines.Add($"127.0.0.1\t{d}");
-        lines.Add(MarkerEnd);
+            block.Add($"127.0.0.1\t{d}");
+        block.Add(MarkerEnd);
+        block.Add("");
 
-        Save(lines);
+        var merged = new List<string>(block.Count + lines.Count);
+        merged.AddRange(block);
+        merged.AddRange(lines);
+
+        if (merged.Count > 0 && merged[^1].Trim().Length != 0) merged.Add("");
+
+        Save(merged);
         return bak;
     }
 

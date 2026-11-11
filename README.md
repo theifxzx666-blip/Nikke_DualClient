@@ -4,6 +4,12 @@
 
 ![界面](docs/screenshot.png)
 
+## 下载
+
+**[v1.11 直接下载](https://github.com/theifxzx666-blip/Nikke_DualClient/releases/latest)** —— 解压后双击 `NikkeDualClient.exe`，自包含单文件，不需要装 .NET 运行时。会弹 UAC 提权（要改 hosts 和本机证书库）。
+
+历史版本在 [Releases](https://github.com/theifxzx666-blip/Nikke_DualClient/releases) 页。
+
 ## 解决什么问题
 
 私服和官服不能同时在线，切换要动 hosts、装/卸根证书、起停本地服务。手动操作容易残留，也难还原干净。这个工具把它收敛成两个按钮：

@@ -88,7 +88,7 @@ public sealed class MainForm : Form
         // 高度按内容反推：根内边距 24 + 标题 112 + 路径 114 + 列表 11 行 × 40 + 卡片内边距 44
         // + 日志 104 + 底栏 84 ≈ 922。行高由字高实测得出（见 BuildChecks），
         // 这里留出 11 行全部可见的空间，否则最后一行会被卡片的圆角 Region 裁掉半截。
-        ClientSize = new Size(980, 922);
+        ClientSize = new Size(980, 946);
         MinimumSize = new Size(930, 960);
 
         // 小屏兜底：1080p 带任务栏只剩约 1040，窗口放不下时往下压，
@@ -114,7 +114,7 @@ public sealed class MainForm : Form
             RowCount = 5,
             BackColor = Color.Transparent
         };
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 114));
         // 列表用 Percent 吃满剩余：定死高度（算过 352）实测仍会差几像素出滚动条，
         // 而 Percent 在窗口拉大时还会跟着长。日志给 130 压掉多余空白。
@@ -162,31 +162,36 @@ public sealed class MainForm : Form
     {
         var p = new Panel { BackColor = Color.Transparent };
 
-        // 显式 Height + TextAlign，不用 AutoSize。
-        // AutoSize 的高度由字体度量决定，21pt 在部分 DPI 下会算矮，
-        // 结果是文字下半截被切（GM 工具那套也踩过同一个坑）。
+        // 高度必须由字体实测得出。19pt 粗体的「环境不完整」实测字高 46px，
+        // 而之前写死 38 —— Label 会用 TextAlign 居中后把上下各裁掉 4px，
+        // 看起来就是「字没显示全」（用户截图里标题上下沿是平的）。
+        var titleFont = Theme.Ui(19f, FontStyle.Bold);
+        var titleH = TextRenderer.MeasureText("环境不完整", titleFont).Height;
+        var subFont = Theme.Ui(10f);
+        var subH = TextRenderer.MeasureText("缺的那部分会在下次启动时自动补齐", subFont).Height;
+
         _lblMode = new Label
         {
             Text = "读取中…",
-            Font = Theme.Ui(19f, FontStyle.Bold),
+            Font = titleFont,
             ForeColor = Theme.Text,
             BackColor = Color.Transparent,
             AutoSize = false,
-            // 19pt 中文实测行高 ≈ 36px，给 38 才不切字；设 32 会把上半截裁掉
-            Height = 38,
+            Height = titleH,
             TextAlign = ContentAlignment.MiddleLeft,
             Location = new Point(16, 0)
         };
         _lblModeSub = new Label
         {
             Text = "",
-            Font = Theme.Ui(9.5f),
+            Font = subFont,
             ForeColor = Theme.TextDim,
             BackColor = Color.Transparent,
             AutoSize = false,
-            Height = 20,
+            Height = subH + 2,
             TextAlign = ContentAlignment.MiddleLeft,
-            Location = new Point(18, 48)
+            // 标题下沿再留 8px，否则副标题贴着标题，视觉上像被压住
+            Location = new Point(18, titleH + 8)
         };
 
         // 设置入口放右上角，用齿轮图标；比底部文字链接更符合通用习惯

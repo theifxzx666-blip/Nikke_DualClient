@@ -33,6 +33,44 @@ public static class Diagnostics
         sb.AppendLine($"主题 / 背景  {cfg.ThemeMode} / {(cfg.BackgroundImage is null ? "纯色" : Path.GetFileName(cfg.BackgroundImage))}");
         sb.AppendLine();
 
+        sb.AppendLine("=== 授权文件（EpinelPS\\auth.txt）===");
+        try
+        {
+            var serverDir = cfg.ServerExePath is null ? null : Path.GetDirectoryName(cfg.ServerExePath);
+            var authPath = serverDir is null ? null : Path.Combine(serverDir, "auth.txt");
+
+            if (authPath is not null && File.Exists(authPath))
+            {
+                var info = new FileInfo(authPath);
+                var raw = File.ReadAllText(authPath).Trim();
+                var parts = raw.Split('=', 2);
+
+                // 订单号是购买凭证，只留前 4 位，免得诊断文件转发出去泄露
+                var order = parts.Length > 0 ? parts[0] : "";
+                var masked = order.Length > 4 ? order[..4] + "***" : "***";
+                var bound = parts.Length > 1 ? parts[1].Trim() : "(无)";
+
+                var cpu = CpuId();
+                var match = cpu is not null && bound.Equals(cpu, StringComparison.OrdinalIgnoreCase);
+
+                sb.AppendLine($"文件            {authPath}");
+                sb.AppendLine($"状态            存在，{info.Length} 字节，改于 {info.LastWriteTime:yyyy-MM-dd HH:mm}");
+                sb.AppendLine($"订单号          {masked}");
+                sb.AppendLine($"绑定机器码      {bound}");
+                sb.AppendLine($"本机 CPU ID     {cpu ?? "(读取失败)"}");
+                sb.AppendLine($"机器码匹配      {(match ? "是" : "否 —— 这个 auth.txt 不是本机激活的")}");
+            }
+            else
+            {
+                sb.AppendLine("状态            不存在（服务端可能要求激活）");
+            }
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"读取失败：{ex.Message}");
+        }
+        sb.AppendLine();
+
         sb.AppendLine("=== 环境状态 ===");
         try
         {
@@ -104,5 +142,22 @@ public static class Diagnostics
             return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
         }
         catch { return false; }
+    }
+
+    /// <summary>读 CPU 序列号，用来和 auth.txt 里绑定的机器码比对。</summary>
+    static string? CpuId()
+    {
+        try
+        {
+            using var searcher = new System.Management.ManagementObjectSearcher(
+                "SELECT ProcessorId FROM Win32_Processor");
+
+            foreach (System.Management.ManagementObject mo in searcher.Get())
+            {
+                using (mo) return mo["ProcessorId"]?.ToString();
+            }
+        }
+        catch { }
+        return null;
     }
 }

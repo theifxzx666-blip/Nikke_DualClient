@@ -85,8 +85,8 @@ public sealed class MainForm : Form
     void BuildUi()
     {
         Text = "NIKKE 双服切换";
-        ClientSize = new Size(960, 780);
-        MinimumSize = new Size(900, 720);
+        ClientSize = new Size(980, 800);
+        MinimumSize = new Size(920, 760);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Bg;
         ForeColor = Theme.Text;
@@ -104,10 +104,10 @@ public sealed class MainForm : Form
         };
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 106));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        // 列表吃满剩余（11 项 × 26px 行高 ≈ 286，实测 Percent 分到的够用）；
-        // 定死高度反而会被 ImageList 行高顶出滚动条，把最后两行挤掉
+        // 列表用 Percent 吃满剩余：定死高度（算过 352）实测仍会差几像素出滚动条，
+        // 而 Percent 在窗口拉大时还会跟着长。日志给 130 压掉多余空白。
         table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
 
         table.Controls.Add(Card(BuildHeader(), 158), 0, 0);
@@ -215,7 +215,7 @@ public sealed class MainForm : Form
             AutoSize = true,
             ForeColor = Theme.TextDim,
             BackColor = Color.Transparent,
-            Font = Theme.Mono(9.5f),
+            Font = Theme.Mono(10f),
             Location = new Point(0, 4)
         };
         _lblPrivate = new Label
@@ -223,8 +223,8 @@ public sealed class MainForm : Form
             AutoSize = true,
             ForeColor = Theme.TextDim,
             BackColor = Color.Transparent,
-            Font = Theme.Mono(9.5f),
-            Location = new Point(0, 32)
+            Font = Theme.Mono(10f),
+            Location = new Point(0, 34)
         };
 
         var btnPick = new RoundButton
@@ -263,9 +263,9 @@ public sealed class MainForm : Form
             HideSelection = true,
             OwnerDraw = true
         };
-        // ListView 的行高不由 Font 决定，得靠一个空 SmallImageList 撑 ——
-        // 不然 10pt 字挤在 20px 行里，中文字的下沿会被切掉半截。
-        _list.SmallImageList = new ImageList { ImageSize = new Size(1, 24) };
+        // ListView 的行高不由 Font 决定，得靠一个空 SmallImageList 撑。
+        // 10pt 中文行高约 14px，行高给 28 才有上下留白；24 会挤成一片（用户反馈「堆在一起」）。
+        _list.SmallImageList = new ImageList { ImageSize = new Size(1, 28) };
         _list.Columns.Add("检查项", 200);
         _list.Columns.Add("状态", 110);
         _list.Columns.Add("说明", 100);

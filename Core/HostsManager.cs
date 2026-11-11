@@ -24,6 +24,13 @@ public static class HostsManager
     /// </summary>
     static readonly string[] ShadowPrefixes = [ShadowPrefix, "#PIN-OFF# "];
 
+    /// <summary>
+    /// 本工具自己写的官方入口区块。只在用户机器上完全没有 lobby 条目时才写 ——
+    /// 用户自己有 OfficialPins / UsbEAm（#UHE_）之类的就尊重原配置，绝不叠一份。
+    /// </summary>
+    public const string OfficialBegin = "# >>> NIKKE-OFFICIAL-BEGIN";
+    public const string OfficialEnd = "# <<< NIKKE-OFFICIAL-END";
+
     static readonly System.Text.Encoding Raw = System.Text.Encoding.Latin1;
 
     public static string HostsPath => Path.Combine(
@@ -216,6 +223,96 @@ public static class HostsManager
         Unshadow(outLines);
         Save(outLines);
         return bak;
+    }
+
+    // ---------------------------------------------------------------- 官服基线
+
+    /// <summary>只有 lobby 域名需要钉 IP；intlgame 那批走 DNS 能正常解析，不碰。</summary>
+    public static bool IsLobbyDomain(string d) =>
+        d.EndsWith("-lobby.nikke-kr.com", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>文件里还有多少条生效的 lobby 条目。</summary>
+    public static int CountLiveLobby(List<string> lines)
+    {
+        var n = 0;
+        foreach (var line in lines)
+        {
+            var t = line.Trim();
+            if (t.Length == 0 || t.StartsWith('#')) continue;
+            var parts = t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && IsLobbyDomain(parts[1])) n++;
+        }
+        return n;
+    }
+
+    /// <summary>生效的 lobby 条目用的 IP（取第一条），没有则 null。</summary>
+    public static string? FindLobbyIp(List<string> lines)
+    {
+        foreach (var line in lines)
+        {
+            var t = line.Trim();
+            if (t.Length == 0 || t.StartsWith('#')) continue;
+            var parts = t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && IsLobbyDomain(parts[1])) return parts[0];
+        }
+        return null;
+    }
+
+    public static bool HasOfficialBlock(List<string> lines) =>
+        lines.Any(l => l.StartsWith(OfficialBegin, StringComparison.Ordinal));
+
+    static List<string> StripOfficial(List<string> lines)
+    {
+        var result = new List<string>(lines.Count);
+        var inside = false;
+        foreach (var line in lines)
+        {
+            if (line.StartsWith(OfficialBegin, StringComparison.Ordinal)) { inside = true; continue; }
+            if (line.StartsWith(OfficialEnd, StringComparison.Ordinal)) { inside = false; continue; }
+            if (!inside) result.Add(line);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 收敛到官服基线：摘私服区块 → 摘自己的官方区块 → 还原被注释的第三方条目。
+    /// 还原后如果用户本来就有 lobby 条目（OfficialPins / UsbEAm / 加速器写的），就不写，
+    /// 尊重原配置；完全没有才用探测到的 ip 补一段，保证客户端拿得到入口。
+    /// </summary>
+    public static (string Backup, bool Wrote, string Detail) EnableOfficial(AppConfig cfg, string ip)
+    {
+        var lines = StripBlock(ReadLines());
+        lines = StripOfficial(lines);
+        var restored = Unshadow(lines);
+        var bak = Backup("");
+
+        var live = CountLiveLobby(lines);
+        if (live > 0)
+        {
+            Save(lines);
+            var extra = restored > 0 ? $"，还原 {restored} 条" : "";
+            return (bak, false, $"沿用已有 {live} 条官方入口{extra}");
+        }
+
+        if (string.IsNullOrWhiteSpace(ip))
+            return (bak, false, "无可用官方入口 IP，hosts 未改动");
+
+        var block = new List<string>
+        {
+            $"{OfficialBegin} ip={ip} time={DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+        };
+        foreach (var d in cfg.PrivateHosts.Where(IsLobbyDomain))
+            block.Add($"{ip}\t{d}");
+        block.Add(OfficialEnd);
+        block.Add("");
+
+        var merged = new List<string>(block.Count + lines.Count);
+        merged.AddRange(block);
+        merged.AddRange(lines);
+        if (merged.Count > 0 && merged[^1].Trim().Length != 0) merged.Add("");
+
+        Save(merged);
+        return (bak, true, $"写入 {block.Count - 2} 条 lobby → {ip}");
     }
 
     /// <summary>有效行里是否还有新闻域名指向本机 —— 广告页复发的第一信号。</summary>

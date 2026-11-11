@@ -26,6 +26,27 @@ public sealed class AppConfig
 
     public string[] PrivateHosts { get; set; } = DefaultHosts();
 
+    /// <summary>
+    /// 官服 lobby 的候选 IP，按顺序做 TLS 握手探测，选第一个通的。
+    ///
+    /// 为什么必须钉 IP：官方把国际服域名 CNAME 到 black.nikke-kr.com，解析结果是 0.0.0.0 级黑洞，
+    /// 公共 DNS（阿里/腾讯/Google/Cloudflare 实测）全部返回不可用地址。
+    ///
+    /// 为什么做成可编辑列表：官方入口会迁移。2026-11-11 实测：
+    ///   124.156.233.126 → 404 / 0.25s（腾讯云新加坡，正常）
+    ///   43.169.55.10    → 567 / 1.2s（AWS，被拒）
+    ///   43.152.186.225  → 418 / 0.8s（AWS 北美，被拒）
+    /// IP 失效时改这里即可，不用等新版本。
+    /// </summary>
+    public string[] LobbyCandidates { get; set; } = DefaultLobbyCandidates();
+
+    public static string[] DefaultLobbyCandidates() => new[]
+    {
+        "124.156.233.126",
+        "43.169.55.10",
+        "43.152.186.225"
+    };
+
     // ---------------------------------------------------------------- 外观
 
     /// <summary>自定义背景图，空表示纯色。路径失效自动回落，不报错。</summary>

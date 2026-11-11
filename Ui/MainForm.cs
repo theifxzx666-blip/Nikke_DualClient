@@ -466,7 +466,9 @@ public sealed class MainForm : Form
         _lblMode.ForeColor = s.Mode switch { 0 => Theme.Good, 1 => Theme.Info, _ => Theme.Warn };
         _lblModeSub.Text = s.Mode switch
         {
-            0 => "点「启动单机版」会自动准备私服环境，不用先做别的",
+            0 => s.OfficialLobby == 0
+                    ? "还没有 lobby 入口，点「启动官服」会自动探测并补上"
+                    : $"{s.OfficialLobby} 条 lobby 入口 → {s.LobbyIp}",
             1 => $"{_cfg.PrivateHosts.Length} 个域名指向本机 · 证书已装 · 443 监听中",
             _ => "缺的那部分会在下次启动时自动补齐"
         };
@@ -485,6 +487,11 @@ public sealed class MainForm : Form
         AddRow("hosts 私服区块", s.HostsBlock ? "存在" : "无",
                s.HostsBlock ? $"{_cfg.PrivateHosts.Length} 个域名指向 127.0.0.1" : "官服基线",
                s.HostsBlock ? Theme.Info : Theme.TextFaint);
+        AddRow("官方 lobby 入口", s.OfficialLobby == 0 ? "无" : $"{s.OfficialLobby} 条",
+               s.OfficialLobby == 0
+                   ? "点「启动官服」时探测候选 IP 并写入"
+                   : $"当前走 {s.LobbyIp}",
+               s.OfficialLobby == 0 ? Theme.Warn : Theme.Good);
         AddRow("新闻域名", s.NewsHijacked ? "被劫持" : "正常",
                s.NewsHijacked ? "na-community 仍指向本机，会显示卖家页" : "na-community 未指向本机",
                s.NewsHijacked ? Theme.Bad : Theme.Good);

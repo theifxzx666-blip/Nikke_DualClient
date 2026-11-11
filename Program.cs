@@ -89,6 +89,32 @@ internal static class Program
 
             switch (args[0].ToLowerInvariant())
             {
+                case "--probe":
+                {
+                    // 只探路不写 hosts：官方入口会迁移，用户觉得连不上时可以先用这个确认。
+                    // stdout 在「提权 + 重定向」组合下会被吞，所以结果同时写进 runtime.log。
+                    var lines = new List<string>();
+                    var r = OfficialProbe.Probe(cfg.LobbyCandidates, 1500, m =>
+                    {
+                        lines.Add(m.Trim());
+                        AppLog.Add("probe " + m.Trim());
+                    });
+
+                    var verdict = r.Ok ? $"BEST {r.Ip} {r.LatencyMs}ms" : "ALL FAILED";
+                    AppLog.Add("probe 结果: " + verdict);
+
+                    WriteJson(new
+                    {
+                        ok = r.Ok,
+                        best = r.Ok ? r.Ip : null,
+                        latencyMs = r.LatencyMs,
+                        candidates = cfg.LobbyCandidates,
+                        detail = lines,
+                        logFile = AppLog.LogFile
+                    });
+                    return r.Ok ? 0 : 2;
+                }
+
                 case "--verify":
                 {
                     var s = EnvController.Check(cfg);
@@ -100,6 +126,9 @@ internal static class Program
                         officialRoot = cfg.OfficialRoot,
                         privateRoot = cfg.PrivateRoot,
                         hostsBlock = s.HostsBlock,
+                        officialLobby = s.OfficialLobby,
+                        lobbyIp = s.LobbyIp,
+                        lobbyCandidates = cfg.LobbyCandidates,
                         newsHijacked = s.NewsHijacked,
                         caInstalled = s.CaInstalled,
                         portOpen = s.PortOpen,

@@ -18,6 +18,15 @@ public sealed class EnvStatus
     public bool NewsPolluted { get; init; }
     public List<ProcInfo> Processes { get; init; } = new();
 
+    /// <summary>hosts 里生效的 lobby 条目数。0 表示官服模式下列名一个入口都没有，进不去。</summary>
+    public int OfficialLobby { get; init; }
+
+    /// <summary>这些 lobby 条目用的 IP（取第一条），用于在界面上直说「现在走的是哪个入口」。</summary>
+    public string? LobbyIp { get; init; }
+
+    /// <summary>最近一次探测结果（只在内存里，不落配置）。</summary>
+    public string? ProbeText { get; set; }
+
     /// <summary>0 = 官服基线，1 = 本机私服，2 = 中间态</summary>
     public int Mode
     {
@@ -30,7 +39,7 @@ public sealed class EnvStatus
 
     public string ModeText => Mode switch
     {
-        0 => "官服基线",
+        0 => OfficialLobby == 0 ? "官服基线（无 lobby 入口）" : $"官服基线 · {LobbyIp}",
         1 => "本机私服",
         _ => "环境不完整"
     };
@@ -66,6 +75,8 @@ public static class EnvController
             HostsBlock = HostsManager.HasBlock(lines),
             NewsHijacked = HostsManager.NewsDomainHijacked(lines),
             CdnLine = HostsManager.FindCdnLine(lines),
+            OfficialLobby = HostsManager.CountLiveLobby(lines),
+            LobbyIp = HostsManager.FindLobbyIp(lines),
             CaInstalled = CertManager.IsInstalled(cfg),
             PortOpen = ServerRunner.IsPortOpen(cfg.ServerPort),
             NewsPolluted = NewsRepair.IsPolluted(cfg),
@@ -259,7 +270,7 @@ public static class EnvController
         var officialRunning = s.Processes.Any(p =>
             ProcessScanner.IsClient(p.Name) && ProcessScanner.InRoot(p.Path, cfg.OfficialRoot));
 
-        if (officialRunning && s.Mode == 0)
+        if (officialRunning && s.Mode == 0 && s.OfficialLobby > 0)
         {
             log("官服已在运行，未做改动");
             return;
@@ -268,15 +279,22 @@ public static class EnvController
         // 官服启动器开着不算阻碍：它不占私服的文件和端口，拦它会让用户卡死
         RequireNoClient(s, cfg, allowOfficial: true);
 
+        // 需要动 hosts 的只有两种情况：
+        //   1. 私服区块还在 —— 必须摘，否则 lobby 解析到 127.0.0.1
+        //   2. 一条 lobby 入口都没有 —— 官方 DNS 已被 CNAME 到黑洞地址，不补就进不去
+        // 其余情况（用户已有 OfficialPins / UsbEAm 等，且没有私服残留）一律不碰，
+        // 不要替用户改他已经调好的环境。
+        var needHosts = s.HostsBlock || s.OfficialLobby == 0;
+
         var (servers, _) = SplitProcesses(cfg);
         var todo = new List<string>();
         if (servers.Count > 0 || s.PortOpen) todo.Add("停止私服服务");
-        if (s.HostsBlock) todo.Add("还原 hosts");
+        if (needHosts) todo.Add("切换 hosts");
         if (s.CaInstalled) todo.Add("卸载证书");
 
         if (todo.Count == 0)
         {
-            log("环境已是官服基线");
+            log($"环境已是官服基线（入口 {s.LobbyIp}），未做改动");
         }
         else
         {
@@ -287,11 +305,27 @@ public static class EnvController
                 var n = ServerRunner.Stop(cfg);
                 log($"  私服服务已停止（{n} 个进程）");
             }
-            if (s.HostsBlock)
+
+            if (needHosts)
             {
-                HostsManager.Disable();
-                log("  hosts 已还原");
+                log("  探测官方入口…");
+                var probe = OfficialProbe.Probe(cfg.LobbyCandidates, 1500, log);
+                if (!probe.Ok) log("  候选全部不可达");
+
+                // 即使探测失败也走一遍：EnableOfficial 会先把被注释的第三方条目还原，
+                // 用户本来就有 OfficialPins / UsbEAm 的话，靠它们也能进官服。
+                var (_, _, detail) = HostsManager.EnableOfficial(cfg, probe.Ip);
+                log($"  hosts {detail}");
+
+                if (HostsManager.CountLiveLobby(HostsManager.ReadLines()) == 0)
+                    throw new EnvException(
+                        "官方 lobby 一个可用入口都没有，hosts 没能补上。\r\n\r\n" +
+                        "候选 IP：" + string.Join("、", cfg.LobbyCandidates) + "\r\n\r\n" +
+                        "可能是网络不通，也可能官方又换了入口。\r\n" +
+                        "把新的 lobby IP 填到配置文件 LobbyCandidates 第 1 条即可：\r\n" +
+                        ConfigStore.PrimaryPath);
             }
+
             if (s.CaInstalled)
             {
                 var n = CertManager.Remove(cfg);

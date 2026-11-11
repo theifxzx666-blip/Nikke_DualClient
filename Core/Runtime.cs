@@ -26,6 +26,46 @@ public static class ProcessScanner
     /// <summary>进程名是否属于游戏客户端。</summary>
     public static bool IsClient(string processName) => ClientNames.Contains(processName);
 
+    /// <summary>
+    /// 判断路径是否在某个根目录**内部**。必须带分隔符边界 ——
+    /// 否则 root=`D:\Game\Nikke` 会把 `D:\Game\Nikke_Local\...` 也算进去。
+    /// </summary>
+    public static bool InRoot(string path, string? root)
+    {
+        if (string.IsNullOrWhiteSpace(root) || string.IsNullOrEmpty(path)) return false;
+
+        var r = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (path.Equals(r, StringComparison.OrdinalIgnoreCase)) return true;
+
+        return path.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool InRoots(string path, string[] roots) =>
+        roots.Any(r => InRoot(path, r));
+
+    /// <summary>只挑客户端：先按进程名过滤，避免对几百个无关进程访问 MainModule。</summary>
+    public static List<ProcInfo> FindClients(AppConfig cfg)
+    {
+        var roots = cfg.Roots;
+        var result = new List<ProcInfo>();
+        if (roots.Length == 0) return result;
+
+        foreach (var p in Process.GetProcesses())
+        {
+            try
+            {
+                if (!IsClient(p.ProcessName)) continue; // 名字都不沾边，不用碰 MainModule
+
+                var path = p.MainModule?.FileName;
+                if (!string.IsNullOrEmpty(path) && InRoots(path, roots))
+                    result.Add(new ProcInfo(p.Id, p.ProcessName, path));
+            }
+            catch { }
+            finally { p.Dispose(); }
+        }
+        return result;
+    }
+
     public static List<ProcInfo> Find(AppConfig cfg)
     {
         var roots = cfg.Roots;
@@ -37,8 +77,7 @@ public static class ProcessScanner
             try
             {
                 var path = p.MainModule?.FileName;
-                if (!string.IsNullOrEmpty(path) &&
-                    roots.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
+                if (!string.IsNullOrEmpty(path) && InRoots(path, roots))
                 {
                     result.Add(new ProcInfo(p.Id, p.ProcessName, path));
                 }
@@ -48,10 +87,6 @@ public static class ProcessScanner
         }
         return result;
     }
-
-    /// <summary>只挑出需要用户亲自关掉的客户端进程。</summary>
-    public static List<ProcInfo> FindClients(AppConfig cfg) =>
-        Find(cfg).Where(p => IsClient(p.Name)).ToList();
 
     public static bool IsRunning(AppConfig cfg, string exePath) =>
         Find(cfg).Any(p => string.Equals(p.Path, exePath, StringComparison.OrdinalIgnoreCase));

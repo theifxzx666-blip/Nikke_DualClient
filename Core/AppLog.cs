@@ -40,10 +40,10 @@ public static class AppLog
         {
             Lines.Add(line);
             if (Lines.Count > Capacity) Lines.RemoveRange(0, Lines.Count - Capacity);
-        }
 
-        try { File.AppendAllText(LogFile, line + Environment.NewLine, Encoding.UTF8); }
-        catch { }
+            try { File.AppendAllText(LogFile, line + Environment.NewLine, Encoding.UTF8); }
+            catch { /* 日志写不了不能影响主流程 */ }
+        }
     }
 
     public static string Dump()

@@ -127,6 +127,12 @@ internal static class Program
                 case "--start":
                 {
                     var target = args.Length > 1 ? args[1].ToLowerInvariant() : "private";
+                    if (target is not ("private" or "official"))
+                    {
+                        WriteJson(new { ok = false, error = $"未知目标：{target}（只接受 private 或 official）" });
+                        return 2;
+                    }
+
                     var steps = new List<string>();
                     void Sink(string m) { AppLog.Add(m); steps.Add(m); }
 

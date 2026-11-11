@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace NikkeDualClient.Core;
 
 public sealed class EnvStatus
@@ -48,7 +50,10 @@ public static class EnvController
     public static EnvStatus Check(AppConfig cfg)
     {
         var lines = HostsManager.ReadLines();
-        var procs = ProcessScanner.Find(cfg);
+
+        // 只挑游戏相关进程（服务端 + 客户端白名单）。全量枚举所有进程的 MainModule
+        // 要两三秒，而这个方法每次点按钮都会走到；诊断报告那边另有全量扫描。
+        var (servers, clients) = SplitProcesses(cfg);
 
         return new EnvStatus
         {
@@ -64,7 +69,7 @@ public static class EnvController
             CaInstalled = CertManager.IsInstalled(cfg),
             PortOpen = ServerRunner.IsPortOpen(cfg.ServerPort),
             NewsPolluted = NewsRepair.IsPolluted(cfg),
-            Processes = procs
+            Processes = servers.Concat(clients).ToList()
         };
     }
 
@@ -77,24 +82,78 @@ public static class EnvController
     /// <summary>
     /// 只有客户端进程需要用户自己关。EpinelPS 是工具起的后台服务，自动停/自动复用都安全；
     /// 第三方启动器（双端共存启动器、妮姬启动QAQ 之类）虽然也在私服目录下，但不参与判断。
+    ///
+    /// 先按进程名过滤再读 MainModule —— 全量枚举几百个进程的模块路径要一两秒，
+    /// 而这个方法每次点按钮都会走到。
     /// </summary>
     static (List<ProcInfo> Servers, List<ProcInfo> Clients) SplitProcesses(AppConfig cfg)
     {
-        var all = ProcessScanner.Find(cfg);
-        return (
-            all.Where(p => IsServer(p, cfg)).ToList(),
-            all.Where(p => !IsServer(p, cfg) && ProcessScanner.IsClient(p.Name)).ToList()
-        );
+        var roots = cfg.Roots;
+        var servers = new List<ProcInfo>();
+        var clients = new List<ProcInfo>();
+        if (roots.Length == 0) return (servers, clients);
+
+        var serverName = cfg.ServerExePath is null
+            ? null
+            : Path.GetFileNameWithoutExtension(cfg.ServerExePath);
+
+        foreach (var p in Process.GetProcesses())
+        {
+            try
+            {
+                var maybeServer = serverName is not null &&
+                                  p.ProcessName.Equals(serverName, StringComparison.OrdinalIgnoreCase);
+                var maybeClient = ProcessScanner.IsClient(p.ProcessName);
+                if (!maybeServer && !maybeClient) continue;
+
+                var path = p.MainModule?.FileName;
+                if (string.IsNullOrEmpty(path) || !ProcessScanner.InRoots(path, roots)) continue;
+
+                if (maybeServer && string.Equals(path, cfg.ServerExePath, StringComparison.OrdinalIgnoreCase))
+                    servers.Add(new ProcInfo(p.Id, p.ProcessName, path));
+                else if (maybeClient)
+                    clients.Add(new ProcInfo(p.Id, p.ProcessName, path));
+            }
+            catch { }
+            finally { p.Dispose(); }
+        }
+        return (servers, clients);
     }
 
-    static void RequireNoClient(AppConfig cfg)
+    /// <summary>
+    /// allowOfficial：切官服时传 true。官服启动器开着不构成阻碍，
+    /// 它不占用私服的文件和端口，拦它反而会让用户卡死（既关不掉也切不了）。
+    /// </summary>
+    static void RequireNoClient(EnvStatus s, AppConfig cfg, bool allowOfficial = false)
     {
-        var (_, clients) = SplitProcesses(cfg);
+        // 复用 Check 已经扫好的结果，别再枚举一遍进程
+        var clients = s.Processes
+            .Where(p => !IsServer(p, cfg) && ProcessScanner.IsClient(p.Name))
+            .ToList();
+
+        if (allowOfficial && cfg.OfficialRoot is not null)
+            clients = clients.Where(p => !ProcessScanner.InRoot(p.Path, cfg.OfficialRoot)).ToList();
+
         if (clients.Count == 0) return;
 
-        var names = string.Join("、", clients.Select(p => $"{p.Name}({p.Id})"));
+        // launcher 开着的时候，tbs_browser / intl_service 都是它的子进程，
+        // 列出来只会让用户以为要关八个东西
+        var hasLauncher = clients.Any(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase));
+        var meaningful = hasLauncher
+            ? clients.Where(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase)
+                                 || p.Name.Equals("nikke", StringComparison.OrdinalIgnoreCase)).ToList()
+            : clients;
+        if (meaningful.Count == 0) meaningful = clients;
+
+        var summary = string.Join("、", meaningful
+            .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.Count() > 1 ? $"{g.Key} ×{g.Count()}" : g.Key));
+
+        var extra = clients.Count - meaningful.Count;
+        if (extra > 0) summary += $"（另有 {extra} 个子进程）";
+
         throw new EnvException(
-            $"游戏或启动器还开着：{names}\r\n\r\n" +
+            $"游戏或启动器还开着：{summary}\r\n\r\n" +
             "请完全退出（含右下角托盘图标）后再点一次。\r\n" +
             "工具不会强杀客户端 —— 正在下载更新或存进度时杀掉会出问题。");
     }
@@ -119,14 +178,24 @@ public static class EnvController
         var launcherRunning = s.Processes.Any(p =>
             string.Equals(p.Path, cfg.PrivateLauncherPath, StringComparison.OrdinalIgnoreCase));
 
-        // 已经完整在跑就什么都别做，避免连点两下弹一堆提示
-        if (launcherRunning && s.PortOpen && s.HostsBlock && s.CaInstalled && !s.NewsPolluted)
+        // 端口能连上但进程列表里没有 EpinelPS —— 443 被别人占了。
+        // 这种情况下服务根本起不来，直接讲清楚比等 90 秒超时有用。
+        if (s.PortOpen && !s.Processes.Any(p => IsServer(p, cfg)))
+            throw new EnvException(
+                $"443 端口被其他程序占用，而且不是 EpinelPS。\r\n\r\n" +
+                "先把它关掉（可能是别的私服服务端、IIS、代理软件），再点启动。\r\n" +
+                "判断依据：端口能连上，但进程列表里找不到 EpinelPS.exe。");
+
+        // 已经完整在跑就什么都别做，避免连点两下弹一堆提示。
+        // hosts 不能只看「有没有区块」—— 内容过期（域名列表变了）也得重写。
+        if (launcherRunning && s.PortOpen && s.HostsBlock && s.CaInstalled
+            && !s.NewsPolluted && HostsManager.IsBlockCurrent(cfg))
         {
             log("私服已在运行（服务与启动器都在），未做改动");
             return;
         }
 
-        RequireNoClient(cfg);
+        RequireNoClient(s, cfg);
 
         var todo = new List<string>();
         if (!s.HostsBlock) todo.Add("hosts");
@@ -184,9 +253,11 @@ public static class EnvController
             throw new EnvException($"找不到官服启动器：{cfg.OfficialLauncherPath}");
 
         var s = Check(cfg);
+
+        // 判断「官服是否在运行」必须带路径边界，否则 root=`D:\Game` 会把
+        // `D:\Game\nikke153.6.10\...` 的私服客户端也算成官服，导致误报「官服已在运行」。
         var officialRunning = s.Processes.Any(p =>
-            cfg.OfficialRoot is not null &&
-            p.Path.StartsWith(cfg.OfficialRoot, StringComparison.OrdinalIgnoreCase));
+            ProcessScanner.IsClient(p.Name) && ProcessScanner.InRoot(p.Path, cfg.OfficialRoot));
 
         if (officialRunning && s.Mode == 0)
         {
@@ -194,7 +265,8 @@ public static class EnvController
             return;
         }
 
-        RequireNoClient(cfg);
+        // 官服启动器开着不算阻碍：它不占私服的文件和端口，拦它会让用户卡死
+        RequireNoClient(s, cfg, allowOfficial: true);
 
         var (servers, _) = SplitProcesses(cfg);
         var todo = new List<string>();

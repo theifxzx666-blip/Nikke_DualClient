@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <AssemblyName>NikkeDualClient</AssemblyName>
+    <RootNamespace>NikkeDualClient</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Version>1.8.0</Version>
+    <FileVersion>1.8.0.0</FileVersion>
+    <Product>NIKKE 双服切换</Product>
+    <AssemblyTitle>NIKKE 双服切换</AssemblyTitle>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+
+    <!-- 发给他人的关键三项：自包含、单文件、压缩 -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+
+    <!-- WinForms 不支持裁剪，别开 PublishTrimmed -->
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- WFO1000：自绘控件的公共属性不需要设计器序列化 -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 窗体图标：从资源流读取，单文件发布后按路径找不到 -->
+    <EmbeddedResource Include="Assets\app.ico" LogicalName="NikkeDualClient.app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 临时目录里有存档的旧代码和构建缓存，别参与编译 -->
+    <Compile Remove="临时\**" />
+    <None Remove="临时\**" />
+    <EmbeddedResource Remove="临时\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WMI 创建进程用：父进程变成 WmiPrvSE，服务才能脱离调用方的进程树 -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

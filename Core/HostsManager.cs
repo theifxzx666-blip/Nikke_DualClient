@@ -17,6 +17,13 @@ public static class HostsManager
     /// </summary>
     public const string ShadowPrefix = "#NIKKE-PRIV-OFF# ";
 
+    /// <summary>
+    /// 本工具以及历史手工脚本用过的注释标记。旧版本留下的是 "#PIN-OFF# "，
+    /// Unshadow 必须一并识别 —— 否则切换官服时那些行还原不回来，
+    /// 官方域名就会因为没有 IP 可用而解析失败（DNS 只给 0.0.0.1）。
+    /// </summary>
+    static readonly string[] ShadowPrefixes = [ShadowPrefix, "#PIN-OFF# "];
+
     static readonly System.Text.Encoding Raw = System.Text.Encoding.Latin1;
 
     public static string HostsPath => Path.Combine(
@@ -99,19 +106,27 @@ public static class HostsManager
         return n;
     }
 
-    /// <summary>还原被 ShadowConflicts 注释掉的条目，返回还原条数。</summary>
+    /// <summary>还原被注释掉的条目（兼容所有历史前缀），返回还原条数。</summary>
     static int Unshadow(List<string> lines)
     {
         var n = 0;
         for (var i = 0; i < lines.Count; i++)
         {
-            var idx = lines[i].IndexOf(ShadowPrefix, StringComparison.Ordinal);
-            if (idx < 0) continue;
-            lines[i] = lines[i].Substring(idx + ShadowPrefix.Length);
-            n++;
+            foreach (var p in ShadowPrefixes)
+            {
+                var idx = lines[i].IndexOf(p, StringComparison.Ordinal);
+                if (idx < 0) continue;
+                lines[i] = lines[i].Substring(0, idx) + lines[i].Substring(idx + p.Length);
+                n++;
+                break;
+            }
         }
         return n;
     }
+
+    /// <summary>行里是否带任一历史注释标记。</summary>
+    static bool HasAnyShadow(string line) =>
+        ShadowPrefixes.Any(p => line.Contains(p, StringComparison.Ordinal));
 
     /// <summary>摘掉标记段，其余行不动。</summary>
     public static List<string> StripBlock(List<string> lines)
@@ -193,7 +208,7 @@ public static class HostsManager
     {
         var lines = ReadLines();
         var hadBlock = HasBlock(lines);
-        var hadShadow = lines.Any(l => l.Contains(ShadowPrefix, StringComparison.Ordinal));
+        var hadShadow = lines.Any(HasAnyShadow);
         if (!hadBlock && !hadShadow) return null;
 
         var bak = Backup("");

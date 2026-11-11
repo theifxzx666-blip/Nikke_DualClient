@@ -227,14 +227,15 @@ The key contents do not contain a PEM, the content is malformed, or the key does
 ## 开发与发布
 
 ```powershell
-# 临时目录指到项目盘，避免往 C 盘写缓存
-$env:TEMP='F:\Codex\NikkeDualClient\临时'
-$env:TMP='F:\Codex\NikkeDualClient\临时'
-$env:DOTNET_CLI_HOME='F:\Codex\NikkeDualClient\临时\dotnet'
-$env:NUGET_PACKAGES='F:\Codex\NikkeDualClient\临时\nuget'
+# 在项目根目录执行；临时目录指到项目盘，避免往 C 盘写缓存
+$root = $PWD
+$env:TEMP = "$root\临时"
+$env:TMP = "$root\临时"
+$env:DOTNET_CLI_HOME = "$root\临时\dotnet"
+$env:NUGET_PACKAGES = "$root\临时\nuget"
 
-dotnet build   F:\Codex\NikkeDualClient\NikkeDualClient.csproj -c Release
-dotnet publish F:\Codex\NikkeDualClient\NikkeDualClient.csproj -c Release -o F:\Codex\NikkeDualClient\正式产物
+dotnet build   NikkeDualClient.csproj -c Release
+dotnet publish NikkeDualClient.csproj -c Release -o .\正式产物
 ```
 
 产物是单文件 47 MB（自包含 + 压缩）。WinForms 不支持 `PublishTrimmed`，别开。

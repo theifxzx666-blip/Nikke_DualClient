@@ -85,12 +85,20 @@ public sealed class MainForm : Form
     void BuildUi()
     {
         Text = "NIKKE 双服切换";
-        ClientSize = new Size(980, 832);
-        // 最小高度要保证 11 行检查项 + 日志 3 行都完整可见：
-        // 标题 106 + 路径 88 + 列表 352 + 日志 130 + 底栏 80 ≈ 756，
-        // 加上窗口边框和根内边距，820 是能完整显示的下限。
-        // 低于这个高度，最后一行会被卡片的圆角 Region 裁掉半截。
-        MinimumSize = new Size(920, 832);
+        // 高度按内容反推：根内边距 24 + 标题 112 + 路径 114 + 列表 11 行 × 40 + 卡片内边距 44
+        // + 日志 104 + 底栏 84 ≈ 922。行高由字高实测得出（见 BuildChecks），
+        // 这里留出 11 行全部可见的空间，否则最后一行会被卡片的圆角 Region 裁掉半截。
+        ClientSize = new Size(980, 922);
+        MinimumSize = new Size(930, 960);
+
+        // 小屏兜底：1080p 带任务栏只剩约 1040，窗口放不下时往下压，
+        // 让列表改成滚动，而不是把底栏和日志挤出屏幕（那样按钮点不到）。
+        var wa = Screen.FromPoint(Cursor.Position).WorkingArea;
+        if (Height > wa.Height - 16)
+        {
+            ClientSize = new Size(ClientSize.Width, Math.Max(680, wa.Height - 16 - (Height - ClientSize.Height)));
+            MinimumSize = new Size(930, Math.Min(960, Height));
+        }
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Bg;
         ForeColor = Theme.Text;
@@ -106,13 +114,13 @@ public sealed class MainForm : Form
             RowCount = 5,
             BackColor = Color.Transparent
         };
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 106));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 114));
         // 列表用 Percent 吃满剩余：定死高度（算过 352）实测仍会差几像素出滚动条，
         // 而 Percent 在窗口拉大时还会跟着长。日志给 130 压掉多余空白。
         table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
 
         table.Controls.Add(Card(BuildHeader(), 158), 0, 0);
         table.Controls.Add(Card(BuildPaths(), 182), 0, 1);
@@ -178,7 +186,7 @@ public sealed class MainForm : Form
             AutoSize = false,
             Height = 20,
             TextAlign = ContentAlignment.MiddleLeft,
-            Location = new Point(18, 40)
+            Location = new Point(18, 48)
         };
 
         // 设置入口放右上角，用齿轮图标；比底部文字链接更符合通用习惯
@@ -222,7 +230,7 @@ public sealed class MainForm : Form
             ForeColor = Theme.TextDim,
             BackColor = Color.Transparent,
             Font = Theme.Mono(10f),
-            Location = new Point(0, 4)
+            Location = new Point(0, 8)
         };
         _lblPrivate = new Label
         {
@@ -230,7 +238,7 @@ public sealed class MainForm : Form
             ForeColor = Theme.TextDim,
             BackColor = Color.Transparent,
             Font = Theme.Mono(10f),
-            Location = new Point(0, 34)
+            Location = new Point(0, 46)
         };
 
         var btnPick = new RoundButton
@@ -264,16 +272,18 @@ public sealed class MainForm : Form
             BorderStyle = BorderStyle.None,
             BackColor = Theme.Sunken,
             ForeColor = Theme.Text,
-            Font = Theme.Ui(10f),
+            Font = Theme.Ui(10.5f),
             MultiSelect = false,
             HideSelection = true,
             OwnerDraw = true
         };
-        // ListView 的行高不由 Font 决定，得靠一个空 SmallImageList 撑。
-        // 10pt 中文行高约 14px，行高给 28 才有上下留白；24 会挤成一片（用户反馈「堆在一起」）。
-        _list.SmallImageList = new ImageList { ImageSize = new Size(1, 28) };
-        _list.Columns.Add("检查项", 200);
-        _list.Columns.Add("状态", 110);
+        // ListView 的行高不由 Font 决定，只能靠一个空 SmallImageList 撑。
+        // 但字高在不同 DPI / 字体替换下差很多，写死像素值必然在别人的机器上贴成一片
+        // （28 在 10pt 下留白只有 12px，用户连报两次「挤」）。改成按实测字高 + 16。
+        var glyphH = TextRenderer.MeasureText("国Ag", _list.Font).Height;
+        _list.SmallImageList = new ImageList { ImageSize = new Size(1, glyphH + 11) };
+        _list.Columns.Add("检查项", 208);
+        _list.Columns.Add("状态", 124);
         _list.Columns.Add("说明", 100);
 
         // 最后一列跟着窗口宽度走。Add 时传 -2 在 OwnerDraw 下不生效，

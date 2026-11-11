@@ -11,6 +11,12 @@ public static class HostsManager
     public const string MarkerBegin = "# >>> NIKKE-PRIVATE-BEGIN";
     public const string MarkerEnd = "# <<< NIKKE-PRIVATE-END";
 
+    /// <summary>
+    /// 被本工具临时注释掉的第三方条目（OfficialPins / 加速器 / ServerSelector 等）。
+    /// 必须留标记：Disable 时要原样还原，用户原有的段不能被打乱。
+    /// </summary>
+    public const string ShadowPrefix = "#NIKKE-PRIV-OFF# ";
+
     static readonly System.Text.Encoding Raw = System.Text.Encoding.Latin1;
 
     public static string HostsPath => Path.Combine(
@@ -28,24 +34,25 @@ public static class HostsManager
 
     public static bool HasBlock() => HasBlock(ReadLines());
 
-    /// <summary>区块内容是否和当前配置一致，且位置在文件最前。</summary>
+    static (int Start, int End) FindBlock(List<string> lines)
+    {
+        var start = lines.FindIndex(l => l.StartsWith(MarkerBegin, StringComparison.Ordinal));
+        if (start < 0) return (-1, -1);
+        var end = lines.FindIndex(start + 1, l => l.StartsWith(MarkerEnd, StringComparison.Ordinal));
+        return (start, end);
+    }
+
+    /// <summary>
+    /// 区块内容与当前配置一致，且区块外不再有名为同一域名的生效条目。
+    /// 后者是关键：Windows 会把 hosts 里同名域名的所有 IP 一起交给客户端，
+    /// 只要还剩一条官方 IP（OfficialPins / 加速器 / ServerSelector 写的），
+    /// 客户端就可能连到官方服务器，表现就是「加载失败」。
+    /// </summary>
     public static bool IsBlockCurrent(AppConfig cfg)
     {
         var lines = ReadLines();
-        var start = lines.FindIndex(l => l.StartsWith(MarkerBegin, StringComparison.Ordinal));
-        if (start < 0) return false;
-
-        // hosts 对同名域名只取第一条。官方 IP 常被 OfficialPins / 加速器 / ServerSelector
-        // 写在文件前面，区块一旦落在后面就完全失效，客户端会连到官方服务器。
-        for (var i = 0; i < start; i++)
-        {
-            var t = lines[i].Trim();
-            if (t.Length == 0 || t.StartsWith('#')) continue;
-            return false;
-        }
-
-        var end = lines.FindIndex(start + 1, l => l.StartsWith(MarkerEnd, StringComparison.Ordinal));
-        if (end < 0) return false;
+        var (start, end) = FindBlock(lines);
+        if (start < 0 || end < 0) return false;
 
         var inside = lines.GetRange(start + 1, end - start - 1);
         if (inside.Count != cfg.PrivateHosts.Length) return false;
@@ -55,7 +62,55 @@ public static class HostsManager
             if (!inside[i].Contains(cfg.PrivateHosts[i], StringComparison.OrdinalIgnoreCase))
                 return false;
         }
-        return true;
+
+        return CountLiveConflicts(lines, cfg, start, end) == 0;
+    }
+
+    /// <summary>区块外、仍处于生效状态的同名条目数量。</summary>
+    static int CountLiveConflicts(List<string> lines, AppConfig cfg, int skipFrom = -1, int skipTo = -1)
+    {
+        var set = new HashSet<string>(cfg.PrivateHosts, StringComparer.OrdinalIgnoreCase);
+        var n = 0;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (i >= skipFrom && i <= skipTo) continue;
+            var t = lines[i].Trim();
+            if (t.Length == 0 || t.StartsWith('#')) continue;
+            var parts = t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && set.Contains(parts[1])) n++;
+        }
+        return n;
+    }
+
+    /// <summary>把区块外的同名条目注释掉（加前缀），返回处理条数。幂等。</summary>
+    static int ShadowConflicts(List<string> lines, AppConfig cfg)
+    {
+        var set = new HashSet<string>(cfg.PrivateHosts, StringComparer.OrdinalIgnoreCase);
+        var n = 0;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var t = lines[i].Trim();
+            if (t.Length == 0 || t.StartsWith('#')) continue;
+            var parts = t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2 || !set.Contains(parts[1])) continue;
+            lines[i] = ShadowPrefix + lines[i];
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>还原被 ShadowConflicts 注释掉的条目，返回还原条数。</summary>
+    static int Unshadow(List<string> lines)
+    {
+        var n = 0;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var idx = lines[i].IndexOf(ShadowPrefix, StringComparison.Ordinal);
+            if (idx < 0) continue;
+            lines[i] = lines[i].Substring(idx + ShadowPrefix.Length);
+            n++;
+        }
+        return n;
     }
 
     /// <summary>摘掉标记段，其余行不动。</summary>
@@ -103,14 +158,16 @@ public static class HostsManager
     }
 
     /// <summary>
-    /// 写入私服区块：先摘旧块，再把新块插到文件最前面。
-    /// 必须放最前 —— hosts 只认第一条，官方 IP 段落通常就在文件开头
-    /// （OfficialPins / 加速器 / ServerSelector 都会写），追加到末尾会被它们压制。
+    /// 写入私服区块：先摘旧块、注释掉其他来源的同名条目，再把区块放到文件最前。
+    /// 注释这一步不能省 —— hosts 里同名域名的多条记录会被一起返回，
+    /// 只移动区块位置无法阻止客户端连到官方 IP。
     /// </summary>
     public static string Enable(AppConfig cfg)
     {
         var lines = StripBlock(ReadLines());
         var bak = Backup("");
+
+        ShadowConflicts(lines, cfg);
 
         var block = new List<string>
         {
@@ -131,13 +188,18 @@ public static class HostsManager
         return bak;
     }
 
+    /// <summary>摘掉私服区块，并还原被注释掉的第三方条目。</summary>
     public static string? Disable()
     {
         var lines = ReadLines();
-        if (!HasBlock(lines)) return null;
+        var hadBlock = HasBlock(lines);
+        var hadShadow = lines.Any(l => l.Contains(ShadowPrefix, StringComparison.Ordinal));
+        if (!hadBlock && !hadShadow) return null;
 
         var bak = Backup("");
-        Save(StripBlock(lines));
+        var outLines = StripBlock(lines);
+        Unshadow(outLines);
+        Save(outLines);
         return bak;
     }
 

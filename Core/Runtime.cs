@@ -7,9 +7,25 @@ public sealed record ProcInfo(int Id, string Name, string Path);
 
 /// <summary>
 /// 按完整安装路径识别进程，不按 exe 文件名 —— 否则会误伤另一个客户端。
+/// 另外只把真正的游戏进程算“客户端”：私服包根目录里常混着第三方启动器
+/// （双端共存启动器、妮姬启动QAQ、ServerSelector 之类），它们也躺在同一个目录下，
+/// 但关掉它们没有任何意义，不该拦用户。
 /// </summary>
 public static class ProcessScanner
 {
+    static readonly HashSet<string> ClientNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "nikke",
+        "nikke_launcher",
+        "tbs_browser",
+        "intl_service",
+        "version_service",
+        "assistant"
+    };
+
+    /// <summary>进程名是否属于游戏客户端。</summary>
+    public static bool IsClient(string processName) => ClientNames.Contains(processName);
+
     public static List<ProcInfo> Find(AppConfig cfg)
     {
         var roots = cfg.Roots;
@@ -32,6 +48,10 @@ public static class ProcessScanner
         }
         return result;
     }
+
+    /// <summary>只挑出需要用户亲自关掉的客户端进程。</summary>
+    public static List<ProcInfo> FindClients(AppConfig cfg) =>
+        Find(cfg).Where(p => IsClient(p.Name)).ToList();
 
     public static bool IsRunning(AppConfig cfg, string exePath) =>
         Find(cfg).Any(p => string.Equals(p.Path, exePath, StringComparison.OrdinalIgnoreCase));

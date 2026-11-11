@@ -494,8 +494,10 @@ public sealed class MainForm : Form
                s.NewsPolluted ? "命中淘宝 / 毛哥 / 9.png / QQ群" : "无卖家信息",
                s.NewsPolluted ? Theme.Bad : Theme.Good);
 
+        // 服务是工具自己管的，第三方启动器不拦，这一行只列真正要用户关的客户端
         var clients = s.Processes
-            .Where(p => !string.Equals(p.Path, _cfg.ServerExePath, StringComparison.OrdinalIgnoreCase))
+            .Where(p => !string.Equals(p.Path, _cfg.ServerExePath, StringComparison.OrdinalIgnoreCase)
+                        && ProcessScanner.IsClient(p.Name))
             .ToList();
         AddRow("待关闭的进程", clients.Count == 0 ? "无" : $"{clients.Count} 个",
                clients.Count == 0 ? "可以切换" : string.Join("、", clients.Select(p => $"{p.Name}({p.Id})")),
@@ -598,6 +600,7 @@ public sealed class MainForm : Form
 
     void Log(string msg)
     {
+        AppLog.Add(msg); // 同时进缓冲区，导出日志时要用
         _log.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
     }
 }

@@ -75,15 +75,15 @@ public static class EnvController
         string.Equals(p.Path, cfg.ServerExePath, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 只有客户端进程需要用户自己关。EpinelPS 是工具起的后台服务，
-    /// 自动停、自动复用都安全，不该拿来拦用户。
+    /// 只有客户端进程需要用户自己关。EpinelPS 是工具起的后台服务，自动停/自动复用都安全；
+    /// 第三方启动器（双端共存启动器、妮姬启动QAQ 之类）虽然也在私服目录下，但不参与判断。
     /// </summary>
     static (List<ProcInfo> Servers, List<ProcInfo> Clients) SplitProcesses(AppConfig cfg)
     {
         var all = ProcessScanner.Find(cfg);
         return (
             all.Where(p => IsServer(p, cfg)).ToList(),
-            all.Where(p => !IsServer(p, cfg)).ToList()
+            all.Where(p => !IsServer(p, cfg) && ProcessScanner.IsClient(p.Name)).ToList()
         );
     }
 

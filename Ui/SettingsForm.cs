@@ -1,3 +1,4 @@
+using System.Text;
 using NikkeDualClient.Core;
 
 namespace NikkeDualClient.Ui;
@@ -534,23 +535,23 @@ public sealed class SettingsForm : Form
         var page = new Panel { BackColor = Color.Transparent };
 
         page.Controls.Add(MakeLabel("修复新闻页", 0, 0, Theme.Text, Theme.Ui(10f, FontStyle.Bold)));
-        page.Controls.Add(MakeLabel(
-            "把启动器新闻页里的卖家广告换回官方内容，并清掉启动器缓存。\r\n启动单机时会自动做一次；这里是手动触发，不用非得重启整套。",
-            0, 26, Theme.TextFaint, Theme.Ui(8.5f)));
+        page.Controls.Add(WrapLabel(
+            "把启动器新闻页里的卖家广告换回官方内容，并清掉启动器缓存。\r\n" +
+            "启动单机时会自动做一次；这里是手动触发，不用非得重启整套。", 0, 26));
 
         var btnRepair = new RoundButton
         {
             Text = "立即修复",
             Size = new Size(112, 36),
             Font = Theme.Ui(9.5f),
-            Location = new Point(0, 76)
+            Location = new Point(0, 96)
         };
         btnRepair.Click += (_, _) => RunRepair();
         page.Controls.Add(btnRepair);
 
         _lblRepairResult = new Label
         {
-            Location = new Point(126, 86),
+            Location = new Point(126, 106),
             AutoSize = true,
             ForeColor = Theme.TextFaint,
             BackColor = Color.Transparent,
@@ -559,7 +560,7 @@ public sealed class SettingsForm : Form
         };
         page.Controls.Add(_lblRepairResult);
 
-        page.Controls.Add(MakeLabel("打开目录", 0, 132, Theme.Text, Theme.Ui(10f, FontStyle.Bold)));
+        page.Controls.Add(MakeLabel("打开目录", 0, 148, Theme.Text, Theme.Ui(10f, FontStyle.Bold)));
 
         var btnBackup = new RoundButton
         {
@@ -570,7 +571,7 @@ public sealed class SettingsForm : Form
             Outlined = true,
             ForeColor = Theme.Text,
             Font = Theme.Ui(9.5f),
-            Location = new Point(0, 162)
+            Location = new Point(0, 176)
         };
         btnBackup.Click += (_, _) => OpenFolder(Path.Combine(ConfigStore.DataDir, "backup"));
         page.Controls.Add(btnBackup);
@@ -584,7 +585,7 @@ public sealed class SettingsForm : Form
             Outlined = true,
             ForeColor = Theme.Text,
             Font = Theme.Ui(9.5f),
-            Location = new Point(126, 162)
+            Location = new Point(126, 176)
         };
         btnLog.Click += (_, _) =>
         {
@@ -593,24 +594,50 @@ public sealed class SettingsForm : Form
         };
         page.Controls.Add(btnLog);
 
-        page.Controls.Add(MakeLabel(
-            "修复不修改游戏文件，只动启动器的网页和缓存，\r\n原文会备份到 backup 目录。",
-            0, 216, Theme.TextFaint, Theme.Ui(8.5f)));
+        page.Controls.Add(MakeLabel("排查问题", 0, 228, Theme.Text, Theme.Ui(10f, FontStyle.Bold)));
+
+        var btnExport = new RoundButton
+        {
+            Text = "导出日志",
+            Size = new Size(112, 36),
+            Font = Theme.Ui(9.5f),
+            Location = new Point(0, 256)
+        };
+        btnExport.Click += (_, _) => ExportLog();
+        page.Controls.Add(btnExport);
+
+        page.Controls.Add(WrapLabel(
+            "把版本、系统、路径、环境状态和本次运行日志打成一个 txt。\r\n" +
+            "反馈问题时直接发这个文件就行。", 0, 302));
+
+        page.Controls.Add(WrapLabel(
+            "修复不修改游戏文件，只动启动器的网页和缓存，原文会备份到 backup 目录。", 0, 356));
 
         return page;
     }
 
+    /// <summary>限宽自动换行的说明文字，避免长句把下面的控件盖住。</summary>
+    Label WrapLabel(string text, int x, int y) => new()
+    {
+        Text = text,
+        Location = new Point(x, y),
+        AutoSize = true,
+        MaximumSize = new Size(540, 0),
+        ForeColor = Theme.TextFaint,
+        BackColor = Color.Transparent,
+        Font = Theme.Ui(8.5f)
+    };
+
     void RunRepair()
     {
-        // 启动器开着的时候缓存文件被占用，移不走也删不掉
-        var busy = ProcessScanner.Find(_work)
-            .Where(p => !string.Equals(p.Path, _work.ServerExePath, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        // 启动器开着的时候缓存文件被占用，移不走也删不掉。
+        // 只认游戏客户端，私服目录里那些第三方启动器不算。
+        var busy = ProcessScanner.FindClients(_work);
 
         if (busy.Count > 0)
         {
             _lblRepairResult.ForeColor = Theme.Warn;
-            _lblRepairResult.Text = "启动器还开着，先退出再修复";
+            _lblRepairResult.Text = "游戏或启动器还开着，先退出再修复";
             return;
         }
 
@@ -620,13 +647,39 @@ public sealed class SettingsForm : Form
             var r = NewsRepair.Repair(_work);
             _lblRepairResult.ForeColor = Theme.Good;
             _lblRepairResult.Text = $"已修复，{r.Actions.Count} 项";
+            AppLog.Add($"维护页手动修复新闻页：{r.Actions.Count} 项");
         }
         catch (Exception ex)
         {
             _lblRepairResult.ForeColor = Theme.Bad;
             _lblRepairResult.Text = "失败：" + ex.Message;
+            AppLog.Add("维护页修复失败：" + ex.Message);
         }
         finally { Cursor.Current = Cursors.Default; }
+    }
+
+    void ExportLog()
+    {
+        using var dlg = new SaveFileDialog
+        {
+            Title = "导出日志",
+            FileName = $"NikkeDualClient_日志_{DateTime.Now:yyyyMMdd_HHmmss}.txt",
+            Filter = "文本文件|*.txt",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            File.WriteAllText(dlg.FileName, Diagnostics.BuildReport(_work), new UTF8Encoding(true));
+            MessageBox.Show(this, "日志已导出：\r\n" + dlg.FileName, "导出成功",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "导出失败：" + ex.Message, "导出日志",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     static void OpenFolder(string path)

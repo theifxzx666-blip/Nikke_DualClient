@@ -14,6 +14,8 @@ internal static class Program
     [STAThread]
     static int Main(string[] args)
     {
+        AppLog.Start(); // 先开日志，崩溃时才有东西可查
+
         // 诊断用：直接打开设置窗口，便于截图核对布局
         if (args.Length > 0 && args[0].Equals("--settings", StringComparison.OrdinalIgnoreCase))
         {
@@ -108,13 +110,16 @@ internal static class Program
                 }
 
                 case "--restore":
-                    EnvController.Restore(cfg, _ => { });
-                    WriteJson(new { ok = true, action = "restore" });
+                {
+                    var steps = new List<string>();
+                    EnvController.Restore(cfg, m => { AppLog.Add(m); steps.Add(m); });
+                    WriteJson(new { ok = true, action = "restore", steps });
                     return 0;
+                }
 
                 case "--repair":
                 {
-                    var r = EnvController.RepairNews(cfg, _ => { });
+                    var r = EnvController.RepairNews(cfg, AppLog.Add);
                     WriteJson(new { ok = true, action = "repair", backup = r.BackupDir, warnings = r.Warnings });
                     return 0;
                 }
@@ -123,8 +128,10 @@ internal static class Program
                 {
                     var target = args.Length > 1 ? args[1].ToLowerInvariant() : "private";
                     var steps = new List<string>();
-                    if (target == "official") EnvController.GoOfficial(cfg, steps.Add);
-                    else EnvController.GoPrivate(cfg, steps.Add);
+                    void Sink(string m) { AppLog.Add(m); steps.Add(m); }
+
+                    if (target == "official") EnvController.GoOfficial(cfg, Sink);
+                    else EnvController.GoPrivate(cfg, Sink);
                     WriteJson(new { ok = true, action = "start", target, steps });
                     return 0;
                 }
@@ -132,6 +139,23 @@ internal static class Program
                 case "--scan":
                     WriteJson(new { ok = true, scanNotes, officialRoot = cfg.OfficialRoot, privateRoot = cfg.PrivateRoot });
                     return 0;
+
+                case "--diag":
+                {
+                    // 导出诊断日志：带路径就写文件，不带就打到输出
+                    var report = Diagnostics.BuildReport(cfg);
+                    if (args.Length > 1)
+                    {
+                        File.WriteAllText(args[1], report, new System.Text.UTF8Encoding(true));
+                        WriteJson(new { ok = true, action = "diag", path = Path.GetFullPath(args[1]) });
+                    }
+                    else
+                    {
+                        Console.WriteLine(report);
+                        WriteJson(new { ok = true, action = "diag" });
+                    }
+                    return 0;
+                }
 
                 default:
                     WriteJson(new { ok = false, error = $"未知参数：{args[0]}" });

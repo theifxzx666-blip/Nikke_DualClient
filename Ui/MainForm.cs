@@ -85,12 +85,12 @@ public sealed class MainForm : Form
     void BuildUi()
     {
         Text = "NIKKE 双服切换";
-        ClientSize = new Size(920, 744);
-        MinimumSize = new Size(860, 680);
+        ClientSize = new Size(960, 780);
+        MinimumSize = new Size(900, 720);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Bg;
         ForeColor = Theme.Text;
-        Font = Theme.Ui(9.5f);
+        Font = Theme.Ui(10f);
 
         // 整层压暗压在背景图上方；没设背景时就是纯色底
         _root = new GlassPanel { Dock = DockStyle.Fill, Padding = new Padding(14, 12, 14, 12) };
@@ -102,11 +102,13 @@ public sealed class MainForm : Form
             RowCount = 5,
             BackColor = Color.Transparent
         };
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 118));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 316));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 106));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+        // 列表吃满剩余（11 项 × 26px 行高 ≈ 286，实测 Percent 分到的够用）；
+        // 定死高度反而会被 ImageList 行高顶出滚动条，把最后两行挤掉
         table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
 
         table.Controls.Add(Card(BuildHeader(), 158), 0, 0);
         table.Controls.Add(Card(BuildPaths(), 182), 0, 1);
@@ -118,17 +120,24 @@ public sealed class MainForm : Form
         Controls.Add(_root);
     }
 
-    /// <summary>统一卡片：半透明深灰 + 1px 细边。alpha 越低背景图透得越多。</summary>
-    static Control Card(Control inner, int alpha)
+    /// <summary>
+    /// 统一卡片：不透明实底 + 14px 圆角 + 1px 描边。
+    ///
+    /// 之前用半透明（alpha 158~232）配自定义壁纸，正文会被照片花纹吃掉 ——
+    /// 浅色主题下深色字压在浅粉纹理上，最难看清。现在改实底，
+    /// alpha 参数留着只为不改调用处，实际不再参与绘制。
+    /// </summary>
+    static Control Card(Control inner, int alpha = 0)
     {
         var card = new GlassPanel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 0, 0, 12),
-            Padding = new Padding(20, 16, 20, 16),
-            Tint = Theme.Tint(alpha),
-            DrawBorder = false,
-            Radius = 16
+            Margin = new Padding(0, 0, 0, 10),
+            Padding = new Padding(18, 14, 18, 14),
+            Tint = Theme.Card,
+            DrawBorder = true,
+            BorderColor = Theme.BorderSoft,
+            Radius = 14
         };
         inner.Dock = DockStyle.Fill;
         card.Controls.Add(inner);
@@ -139,13 +148,19 @@ public sealed class MainForm : Form
     {
         var p = new Panel { BackColor = Color.Transparent };
 
+        // 显式 Height + TextAlign，不用 AutoSize。
+        // AutoSize 的高度由字体度量决定，21pt 在部分 DPI 下会算矮，
+        // 结果是文字下半截被切（GM 工具那套也踩过同一个坑）。
         _lblMode = new Label
         {
             Text = "读取中…",
-            Font = Theme.Ui(21f, FontStyle.Bold),
+            Font = Theme.Ui(19f, FontStyle.Bold),
             ForeColor = Theme.Text,
             BackColor = Color.Transparent,
-            AutoSize = true,
+            AutoSize = false,
+            // 19pt 中文实测行高 ≈ 36px，给 38 才不切字；设 32 会把上半截裁掉
+            Height = 38,
+            TextAlign = ContentAlignment.MiddleLeft,
             Location = new Point(16, 0)
         };
         _lblModeSub = new Label
@@ -154,8 +169,10 @@ public sealed class MainForm : Form
             Font = Theme.Ui(9.5f),
             ForeColor = Theme.TextDim,
             BackColor = Color.Transparent,
-            AutoSize = true,
-            Location = new Point(18, 44)
+            AutoSize = false,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Location = new Point(18, 40)
         };
 
         // 设置入口放右上角，用齿轮图标；比底部文字链接更符合通用习惯
@@ -170,9 +187,16 @@ public sealed class MainForm : Form
 
         _statusBar = new Panel
         {
-            Location = new Point(0, 4),
+            Location = new Point(0, 2),
             Size = new Size(4, 46),
             BackColor = Theme.Info
+        };
+
+        // 标题宽度跟着面板走，避免长文本（含 IP）被截断
+        p.Resize += (_, _) =>
+        {
+            _lblMode.Width = Math.Max(120, p.Width - 80);
+            _lblModeSub.Width = Math.Max(120, p.Width - 80);
         };
 
         p.Controls.Add(_statusBar);
@@ -234,14 +258,27 @@ public sealed class MainForm : Form
             BorderStyle = BorderStyle.None,
             BackColor = Theme.Sunken,
             ForeColor = Theme.Text,
-            Font = Theme.Ui(9.5f),
+            Font = Theme.Ui(10f),
             MultiSelect = false,
             HideSelection = true,
             OwnerDraw = true
         };
-        _list.Columns.Add("检查项", 236);
-        _list.Columns.Add("状态", 116);
-        _list.Columns.Add("说明", 452);
+        // ListView 的行高不由 Font 决定，得靠一个空 SmallImageList 撑 ——
+        // 不然 10pt 字挤在 20px 行里，中文字的下沿会被切掉半截。
+        _list.SmallImageList = new ImageList { ImageSize = new Size(1, 24) };
+        _list.Columns.Add("检查项", 200);
+        _list.Columns.Add("状态", 110);
+        _list.Columns.Add("说明", 100);
+
+        // 最后一列跟着窗口宽度走。Add 时传 -2 在 OwnerDraw 下不生效，
+        // 会留出横向滚动条，反而吃掉可视高度。
+        void FitLastColumn()
+        {
+            var used = _list.Columns[0].Width + _list.Columns[1].Width;
+            var rest = _list.ClientSize.Width - used - 4;
+            if (rest > 80) _list.Columns[2].Width = rest;
+        }
+        _list.Resize += (_, _) => FitLastColumn();
 
         // ListView 不支持透明，只能自绘，否则行底色和卡片对不上
         _list.DrawColumnHeader += (_, e) =>
@@ -283,7 +320,7 @@ public sealed class MainForm : Form
             BackColor = Theme.Sunken,
             ForeColor = Theme.TextFaint,
             BorderStyle = BorderStyle.None,
-            Font = Theme.Mono(8.5f),
+            Font = Theme.Mono(9f),
             WordWrap = false
         };
         return _log;
@@ -294,10 +331,12 @@ public sealed class MainForm : Form
         var p = new GlassPanel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 6, 0, 0),
+            Margin = new Padding(0, 4, 0, 0),
             Padding = new Padding(18, 14, 18, 14),
-            Tint = Theme.Tint(232),
-            Radius = 16
+            Tint = Theme.Card,
+            DrawBorder = true,
+            BorderColor = Theme.BorderSoft,
+            Radius = 14
         };
 
         _btnPrivate = new RoundButton
@@ -381,8 +420,12 @@ public sealed class MainForm : Form
         _bgSource?.Dispose();
         _bgSource = BackgroundRenderer.LoadSource(_cfg.BackgroundImage);
 
-        var dim = Math.Clamp(_cfg.BackgroundDim, 0, 95);
-        var baseColor = Theme.Light ? 255 : 26;
+        // 背景只当氛围层，可读性不能靠它。
+        // 压暗下限是硬约束：浅色主题 88%、深色 72%。
+        // 低于这个值，照片纹理就会和正文抢注意力 —— 用户配的图往往很花。
+        var floor = Theme.Light ? 88 : 72;
+        var dim = Math.Clamp(Math.Max(_cfg.BackgroundDim, floor), 0, 97);
+        var baseColor = Theme.Light ? 250 : 22;
         _root.Tint = Color.FromArgb(dim * 255 / 100, baseColor, baseColor, baseColor);
 
         RenderBackground();
@@ -400,8 +443,9 @@ public sealed class MainForm : Form
 
         if (_bgSource is null) return;
 
-        // 用户要求保留原图清晰度，不做模糊；靠压暗层保证文字可读
-        BackgroundImage = BackgroundRenderer.Render(_bgSource, ClientSize.Width, ClientSize.Height, _cfg, blur: false);
+        // 必须模糊：清晰的照片即使压暗 88%，细节边缘仍会干扰文字。
+        // 模糊 + 压暗后它退化成一层色块，这才叫"背景"。
+        BackgroundImage = BackgroundRenderer.Render(_bgSource, ClientSize.Width, ClientSize.Height, _cfg, blur: true);
         BackgroundImageLayout = ImageLayout.None; // 尺寸已匹配，不需要再缩放
     }
 
@@ -510,6 +554,10 @@ public sealed class MainForm : Form
                clients.Count == 0 ? "可以切换" : string.Join("、", clients.Select(p => $"{p.Name}({p.Id})")),
                clients.Count == 0 ? Theme.Good : Theme.Warn);
         _list.EndUpdate();
+
+        // 重建列表后滚动位置会保留，行高一变就容易停在半中间（顶部几行看不见）。
+        // 每次刷新都回到第一行，用户看到的永远是完整列表。
+        if (_list.Items.Count > 0) _list.EnsureVisible(0);
     }
 
     void AddRow(string name, string state, string? detail, Color color)

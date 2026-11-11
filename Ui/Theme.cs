@@ -36,6 +36,18 @@ internal static class Theme
         ? Color.FromArgb(alpha, 255, 255, 255)
         : Color.FromArgb(alpha, 32, 32, 32);
 
+    /// <summary>
+    /// 卡片实底（不透明）。
+    ///
+    /// 半透明卡片配自定义壁纸是踩过的坑：alpha 再高，照片的花纹也会从卡面透出来，
+    /// 浅色主题下 65% 白压暗只能把照片压成"浅粉"，深色正文照样糊在花纹上。
+    /// 所以卡片一律给不透明色，背景只当窗口边缘的氛围层，不参与可读性。
+    /// </summary>
+    public static Color Card => Light ? Color.FromArgb(252, 253, 254) : Color.FromArgb(28, 30, 35);
+
+    /// <summary>比卡片亮一档，用于表头、输入框底等需要区分层次的地方。</summary>
+    public static Color CardHi => Light ? Color.FromArgb(244, 246, 249) : Color.FromArgb(35, 38, 44);
+
     public static Font Ui(float size, FontStyle style = FontStyle.Regular) =>
         new("Microsoft YaHei UI", size, style);
 

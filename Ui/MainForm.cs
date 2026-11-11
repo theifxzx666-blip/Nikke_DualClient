@@ -85,8 +85,12 @@ public sealed class MainForm : Form
     void BuildUi()
     {
         Text = "NIKKE 双服切换";
-        ClientSize = new Size(980, 800);
-        MinimumSize = new Size(920, 760);
+        ClientSize = new Size(980, 832);
+        // 最小高度要保证 11 行检查项 + 日志 3 行都完整可见：
+        // 标题 106 + 路径 88 + 列表 352 + 日志 130 + 底栏 80 ≈ 756，
+        // 加上窗口边框和根内边距，820 是能完整显示的下限。
+        // 低于这个高度，最后一行会被卡片的圆角 Region 裁掉半截。
+        MinimumSize = new Size(920, 832);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Bg;
         ForeColor = Theme.Text;
@@ -103,7 +107,7 @@ public sealed class MainForm : Form
             BackColor = Color.Transparent
         };
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 106));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
         // 列表用 Percent 吃满剩余：定死高度（算过 352）实测仍会差几像素出滚动条，
         // 而 Percent 在窗口拉大时还会跟着长。日志给 130 压掉多余空白。
         table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -133,7 +137,9 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(0, 0, 0, 10),
-            Padding = new Padding(18, 14, 18, 14),
+            // 底部给 20：卡片靠 Region 裁圆角，padding 只有 14 时
+            // 列表最后一行会被圆角内切切掉半截（用户截图实测）
+            Padding = new Padding(18, 14, 18, 20),
             Tint = Theme.Card,
             DrawBorder = true,
             BorderColor = Theme.BorderSoft,
@@ -550,9 +556,14 @@ public sealed class MainForm : Form
             .Where(p => !string.Equals(p.Path, _cfg.ServerExePath, StringComparison.OrdinalIgnoreCase)
                         && ProcessScanner.IsClient(p.Name))
             .ToList();
+        // 说明列宽度有限，进程名拼多了必然被省略号截断。
+        // 只列前 2 个够判断"这是不是我要关的客户端"，全量放 ToolTip。
+        var clientText = clients.Count == 0
+            ? "可以切换"
+            : string.Join("、", clients.Take(2).Select(p => $"{p.Name}({p.Id})"))
+              + (clients.Count > 2 ? $" 等 {clients.Count} 个" : "");
         AddRow("待关闭的进程", clients.Count == 0 ? "无" : $"{clients.Count} 个",
-               clients.Count == 0 ? "可以切换" : string.Join("、", clients.Select(p => $"{p.Name}({p.Id})")),
-               clients.Count == 0 ? Theme.Good : Theme.Warn);
+               clientText, clients.Count == 0 ? Theme.Good : Theme.Warn);
         _list.EndUpdate();
 
         // 重建列表后滚动位置会保留，行高一变就容易停在半中间（顶部几行看不见）。

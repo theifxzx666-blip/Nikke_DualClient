@@ -40,6 +40,13 @@ EpinelPS 四次启动（21:33 / 21:51:58 / 21:55:06 / 21:57:48）全部同一死
 - 配合 v1.12.3 的 Roots 收窄：官服根填盘符也不会再把整盘进程卷进来。
 - 产物 1.12.4，SHA256 `F5A666625B301EB32CD5CF68A07D64BA156BF456F298345581F47BBE2BD47B21`。
 
+## 本轮（2026-11-12 v1.12.5 GoOfficial 与解析器对齐）
+- 现场：官服根填到 Launcher 那一层（`D:\NIKKE\Launcher`），设置页显示「√ 官服启动器」（走 `LauncherFinder`），点「启动官服」却报 `D:\NIKKE\Launcher\NIKKE\Launcher\nikke_launcher.exe` 不存在（`GoOfficial` 还留着 `cfg.OfficialLauncherPath` 死路径）。
+- 教训：**同一判据只能有一处实现**。`Check` / `SettingsForm` / `Runtime.StartClient` 都换了新解析器，唯独 `GoOfficial` 漏掉 —— 表现就是「页面说 √，点了说 ×」。
+- 改：`GoOfficial` 用 `ResolveOfficial`；报错文案直接告诉用户该填哪一层；「官服是否在运行」用 `AppConfig.GameRootOf` 反推游戏根（`GameRootOf` 提为 public）。
+- 验收：模拟 `OfficialRoot=…\off2\Launcher`，解析命中 `…\off2\Launcher\nikke_launcher.exe`，扫描根反推为 `…\off2`。
+- 产物 1.12.5，SHA256 `61EE1F752DD4FC2F792113269CF1EF5AE4EEDF5301C887E61D8B26E207DFA227`。
+
 ## 待办
 - [x] `dotnet build` 复核可编译（net8，0 警告 0 错误）
 - [ ] 切换/还原各跑一次，确认 hosts 与证书状态可回滚

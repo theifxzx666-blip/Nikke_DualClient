@@ -28,6 +28,7 @@ public static class Diagnostics
         sb.AppendLine($"官服根      {cfg.OfficialRoot ?? "(未设置)"}");
         sb.AppendLine($"私服根      {cfg.PrivateRoot ?? "(未设置)"}");
         sb.AppendLine($"服务端      {cfg.ServerExePath ?? "(未设置)"}   {(File.Exists(cfg.ServerExePath) ? "√" : "×")}");
+        sb.AppendLine($"扫描根      {string.Join("  |  ", cfg.Roots)}");
         var hitOfficial = LauncherFinder.ResolveOfficial(cfg);
         sb.AppendLine($"官服启动器  {hitOfficial ?? "(未找到)"}   {(hitOfficial is null ? "×" : "√")}");
         var hitLauncher = LauncherFinder.Resolve(cfg);

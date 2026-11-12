@@ -148,12 +148,7 @@ public static class EnvController
 
         // launcher 开着的时候，tbs_browser / intl_service 都是它的子进程，
         // 列出来只会让用户以为要关八个东西
-        var hasLauncher = clients.Any(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase));
-        var meaningful = hasLauncher
-            ? clients.Where(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase)
-                                 || p.Name.Equals("nikke", StringComparison.OrdinalIgnoreCase)).ToList()
-            : clients;
-        if (meaningful.Count == 0) meaningful = clients;
+        var meaningful = ProcessScanner.MustClose(clients);
 
         var summary = string.Join("、", meaningful
             .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)

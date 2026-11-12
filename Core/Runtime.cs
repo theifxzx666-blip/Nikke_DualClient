@@ -57,6 +57,22 @@ public static class ProcessScanner
     public static bool InRoots(string path, string[] roots) =>
         roots.Any(r => InRoot(path, r));
 
+    /// <summary>
+    /// 真正需要用户关的进程。启动器在跑时 intl_service / tbs_browser 都是它的子进程，
+    /// 关掉主进程它们自己就退了；全列出来用户会以为要关九个。
+    /// 状态行和拦截弹窗都走这一套，避免一处说 9 个、一处说 1 个。
+    /// </summary>
+    public static List<ProcInfo> MustClose(IEnumerable<ProcInfo> clients)
+    {
+        var list = clients.ToList();
+        var hasLauncher = list.Any(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase));
+        if (!hasLauncher) return list;
+
+        var main = list.Where(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase)
+                                   || p.Name.Equals("nikke", StringComparison.OrdinalIgnoreCase)).ToList();
+        return main.Count > 0 ? main : list;
+    }
+
     /// <summary>只挑客户端：先按进程名过滤，避免对几百个无关进程访问 MainModule。</summary>
     public static List<ProcInfo> FindClients(AppConfig cfg)
     {

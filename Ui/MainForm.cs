@@ -546,14 +546,16 @@ public sealed class MainForm : Form
             .Where(p => !string.Equals(p.Path, _cfg.ServerExePath, StringComparison.OrdinalIgnoreCase)
                         && ProcessScanner.IsClient(p.Name))
             .ToList();
+        // 与拦截弹窗同一套收敛：启动器在跑时只看主进程，不然这里会写「9 个」而弹窗只列 1 个
+        var mustClose = ProcessScanner.MustClose(clients);
         // 说明列宽度有限，进程名拼多了必然被省略号截断。
         // 只列前 2 个够判断"这是不是我要关的客户端"，全量放 ToolTip。
-        var clientText = clients.Count == 0
+        var clientText = mustClose.Count == 0
             ? "可以切换"
-            : string.Join("、", clients.Take(2).Select(p => $"{p.Name}({p.Id})"))
-              + (clients.Count > 2 ? $" 等 {clients.Count} 个" : "");
-        AddRow("待关闭的进程", clients.Count == 0 ? "无" : $"{clients.Count} 个",
-               clientText, clients.Count == 0 ? Theme.Good : Theme.Warn);
+            : string.Join("、", mustClose.Take(2).Select(p => $"{p.Name}({p.Id})"))
+              + (mustClose.Count > 2 ? $" 等 {mustClose.Count} 个" : "");
+        AddRow("待关闭的进程", mustClose.Count == 0 ? "无" : $"{mustClose.Count} 个",
+               clientText, mustClose.Count == 0 ? Theme.Good : Theme.Warn);
         _list.EndUpdate();
 
         // 重建列表后滚动位置会保留，行高一变就容易停在半中间（顶部几行看不见）。

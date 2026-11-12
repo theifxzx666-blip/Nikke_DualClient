@@ -86,10 +86,43 @@ public sealed class AppConfig
     [JsonIgnore] public string? OfficialLauncherPath => Join(OfficialRoot, OfficialLauncherRel);
     [JsonIgnore] public string? OfficialFallbackPath => Join(OfficialRoot, OfficialFallbackRel);
 
-    /// <summary>官服/私服根目录都要参与进程扫描，避免误伤别的版本。</summary>
+    /// <summary>
+    /// 进程扫描根。用启动器所在目录反推游戏根，而不是直接用用户填的根 ——
+    /// 官服根填成盘符（D:\）时，拿它当扫描范围会把整个盘都算进来。
+    /// 找不到启动器就退回用户填的根；服务端目录单独加一条（它不在客户端目录下）。
+    /// </summary>
     [JsonIgnore]
-    public string[] Roots =>
-        new[] { OfficialRoot, PrivateRoot }.Where(r => !string.IsNullOrWhiteSpace(r)).Cast<string>().ToArray();
+    public string[] Roots
+    {
+        get
+        {
+            var list = new List<string>();
+
+            var official = LauncherFinder.ResolveOfficial(this);
+            var priv = LauncherFinder.Resolve(this);
+
+            list.Add(official is not null ? GameRootOf(official) : OfficialRoot!);
+            list.Add(priv is not null ? GameRootOf(priv) : PrivateRoot!);
+            if (ServerExePath is not null) list.Add(Path.GetDirectoryName(ServerExePath)!);
+
+            return list
+                .Where(r => !string.IsNullOrWhiteSpace(r))
+                .Select(r => r.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+    }
+
+    /// <summary>...\NIKKEG\Launcher\nikke_launcher.exe → ...\NIKKEG</summary>
+    static string GameRootOf(string exe)
+    {
+        var dir = Path.GetDirectoryName(exe);
+        if (dir is null) return exe;
+
+        return string.Equals(Path.GetFileName(dir), "Launcher", StringComparison.OrdinalIgnoreCase)
+            ? Path.GetDirectoryName(dir) ?? dir
+            : dir;
+    }
 
     static string? Join(string? root, string rel) =>
         string.IsNullOrWhiteSpace(root) ? null : Path.Combine(root, rel);

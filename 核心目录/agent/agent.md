@@ -17,7 +17,14 @@
 - 验收：`D:\Codex\Nikke\临时\_launcher_test\` 四个用例（NIKKEG / NIKKE / 自建中文目录 / 空目录）全部符合预期；真实 `E:\[3]Nikke` 命中 `NIKKEG\Launcher\nikke_launcher.exe`；`--diag` 与 `--shot` 均正常。
 - 踩坑：exe 带 `requireAdministrator` manifest，非提权 shell 直接 `Permission denied`（exit 126）→ CLI 验收必须走 `dotnet NikkeDualClient.dll ...`。
 
+## 本轮（2026-11-12 v1.12.2 官服解析 + 噪声进程）
+- 现象：官服根填 `D:\NIKKE`（游戏目录本身），工具找 `D:\NIKKE\NIKKE\Launcher\nikke_launcher.exe` → 「官服 ×」。
+- 决策：`ResolveOfficial` 与私服同一套三级回退，额外覆盖「少一层 Launcher」和 `nikkeminiloader*.exe` 通配兜底。
+- 决策：`ProcessScanner.IsClient` 排除 `crashpad_handler` 与 `GameViewer*`（网易 UU 加速器）。这两类进程在启动器退出后常成孤儿，算进「要关的客户端」会让用户永远切不了。
+- 验收：官服 off1(标准)/off2(少一层)/off3(miniloader)/off_empty 全符合；私服 case1~3 回归通过；真实 E 盘两个根都命中；`--diag` 两行 √；`--shot` 显示「启动器 正常 官服√ 私服√」。
+
 ## 待办
 - [x] `dotnet build` 复核可编译（net8，0 警告 0 错误）
 - [ ] 切换/还原各跑一次，确认 hosts 与证书状态可回滚
 - [ ] 老包回归：确认 NIKKEG 标准包仍走第一条路径，不走搜索
+- [ ] 现场核对：一台机的 EpinelPS 实际运行在 `D:\nikke153.6.10\EpinelPS`，但工具配置的私服根是 `D:\极速下载好的文件\nikke153.6.10`，两处不是同一份，需让用户确认哪份在用

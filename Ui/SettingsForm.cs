@@ -472,7 +472,13 @@ public sealed class SettingsForm : Form
 
         Check(@"官服 NIKKE\Launcher\nikke_launcher.exe", _work.OfficialLauncherPath);
         Check(@"私服 EpinelPS\EpinelPS.exe", _work.ServerExePath);
-        Check(@"私服 NIKKEG\Launcher\nikke_launcher.exe", _work.PrivateLauncherPath);
+
+        // 启动器不按固定相对路径判：直接报实际认到的是哪一个，换包也能一眼看出
+        var launcher = LauncherFinder.Resolve(_work);
+        if (launcher is null)
+            lines.Add(@"  × 私服 nikke_launcher.exe  常见位置都试过，没找到");
+        else
+            lines.Add($"  √ 私服启动器  {Path.GetRelativePath(_work.PrivateRoot!, launcher)}");
 
         _lblPathCheck.Text = string.Join(Environment.NewLine, lines);
         _lblPathCheck.ForeColor = lines.Any(l => l.Contains('×')) ? Theme.Warn : Theme.Good;

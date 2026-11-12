@@ -16,12 +16,17 @@ public static class SelectorSync
     /// <summary>只在现有 GameRoot 失效（缺失或目录不存在）时写入，返回写入的路径。</summary>
     public static string? WriteIfStale(AppConfig cfg, Action<string>? log = null)
     {
-        var launcher = cfg.PrivateLauncherPath;
+        var launcher = LauncherFinder.Resolve(cfg);
         var serverExe = cfg.ServerExePath;
         if (launcher is null || serverExe is null) return null;
 
         // ...\NIKKEG\Launcher\nikke_launcher.exe → ...\NIKKEG
-        var gameRoot = Path.GetDirectoryName(Path.GetDirectoryName(launcher));
+        // 解析到的启动器不一定在 Launcher\ 下（也可能 ...\NIKKE\nikke_launcher.exe），按目录名判断而不是砍两层
+        var launcherDir = Path.GetDirectoryName(launcher);
+        if (launcherDir is null) return null;
+        var gameRoot = string.Equals(Path.GetFileName(launcherDir), "Launcher", StringComparison.OrdinalIgnoreCase)
+            ? Path.GetDirectoryName(launcherDir)
+            : launcherDir;
         var serverDir = Path.GetDirectoryName(serverExe);
         if (gameRoot is null || serverDir is null) return null;
 

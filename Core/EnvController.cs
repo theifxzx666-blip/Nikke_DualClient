@@ -71,7 +71,7 @@ public static class EnvController
             ServerOk = cfg.ServerExePath is not null && File.Exists(cfg.ServerExePath),
             OfficialLauncherOk = (cfg.OfficialLauncherPath is not null && File.Exists(cfg.OfficialLauncherPath))
                                  || (cfg.OfficialFallbackPath is not null && File.Exists(cfg.OfficialFallbackPath)),
-            PrivateLauncherOk = cfg.PrivateLauncherPath is not null && File.Exists(cfg.PrivateLauncherPath),
+            PrivateLauncherOk = LauncherFinder.Resolve(cfg) is not null,
             HostsBlock = HostsManager.HasBlock(lines),
             NewsHijacked = HostsManager.NewsDomainHijacked(lines),
             CdnLine = HostsManager.FindCdnLine(lines),
@@ -179,15 +179,18 @@ public static class EnvController
                 "如果这台机器只玩官服，直接点「启动官服」就行。\r\n" +
                 "要玩单机的话，到「设置 → 路径」把私服根目录指对。");
 
-        if (cfg.PrivateLauncherPath is null || !File.Exists(cfg.PrivateLauncherPath))
+        // 不认死 NIKKEG：一键包里客户端目录可能叫 NIKKE，或被改名塞进自建目录
+        var launcher = LauncherFinder.Resolve(cfg);
+        if (launcher is null)
             throw new EnvException(
-                $"找不到私服客户端启动器：{cfg.PrivateLauncherPath}\r\n\r\n" +
-                "私服根目录下应该有 NIKKEG\\Launcher\\nikke_launcher.exe。\r\n" +
-                "路径不对的话到「设置 → 路径」重新指一下。");
+                "找不到私服客户端启动器：nikke_launcher.exe\r\n\r\n" +
+                $"已在 {cfg.PrivateRoot} 下试过 NIKKEG\\Launcher、NIKKE\\Launcher 等常见位置，" +
+                $"并向下找了 {LauncherFinder.Depth} 层。\r\n" +
+                "客户端装在别处的话，到「设置 → 路径」把私服根目录指到含 EpinelPS 与客户端的那一层。");
 
         var s = Check(cfg);
         var launcherRunning = s.Processes.Any(p =>
-            string.Equals(p.Path, cfg.PrivateLauncherPath, StringComparison.OrdinalIgnoreCase));
+            string.Equals(p.Path, launcher, StringComparison.OrdinalIgnoreCase));
 
         // 端口能连上但进程列表里没有 EpinelPS —— 443 被别人占了。
         // 这种情况下服务根本起不来，直接讲清楚比等 90 秒超时有用。

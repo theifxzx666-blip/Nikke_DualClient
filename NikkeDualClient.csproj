@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- 本机只装了 .NET 8 SDK（8.0.401），net10 目标编不了；
+         自包含单文件发布，目标机不需要运行时，8 还比 10 兼容更多老系统 -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,8 +14,8 @@
     <RootNamespace>NikkeDualClient</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.12.0</Version>
-    <FileVersion>1.12.0.0</FileVersion>
+    <Version>1.12.1</Version>
+    <FileVersion>1.12.1.0</FileVersion>
     <Product>NIKKE 双服切换</Product>
     <AssemblyTitle>NIKKE 双服切换</AssemblyTitle>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>

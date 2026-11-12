@@ -168,7 +168,7 @@ public static class ServerRunner
     /// <summary>启动客户端启动器。主入口缺失时用备用入口（官服有 miniloader 兜底）。</summary>
     public static void StartClient(AppConfig cfg, bool official)
     {
-        var exe = official ? cfg.OfficialLauncherPath : cfg.PrivateLauncherPath;
+        var exe = official ? cfg.OfficialLauncherPath : LauncherFinder.Resolve(cfg);
         if (official && (exe is null || !File.Exists(exe)))
             exe = cfg.OfficialFallbackPath;
 

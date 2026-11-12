@@ -114,6 +114,21 @@ internal static class Program
 
         try
         {
+            // 只探不写：验收和排障时指个目录就能看认到哪一份启动器，不碰配置
+            if (args[0].Equals("--find-launcher", StringComparison.OrdinalIgnoreCase))
+            {
+                var root = args.Length > 1 ? args[1] : ConfigStore.Load()?.PrivateRoot;
+                if (string.IsNullOrWhiteSpace(root))
+                {
+                    WriteJson(new { ok = false, error = "没有指定目录，配置里也没有私服根" });
+                    return 2;
+                }
+
+                var hit = LauncherFinder.Resolve(new AppConfig { PrivateRoot = root });
+                WriteJson(new { ok = hit is not null, root, launcher = hit });
+                return hit is not null ? 0 : 2;
+            }
+
             var cfg = LoadOrScan(out var scanNotes);
             if (cfg is null)
             {

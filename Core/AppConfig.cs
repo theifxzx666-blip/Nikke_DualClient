@@ -114,7 +114,7 @@ public sealed class AppConfig
     }
 
     /// <summary>...\NIKKEG\Launcher\nikke_launcher.exe → ...\NIKKEG</summary>
-    static string GameRootOf(string exe)
+    public static string GameRootOf(string exe)
     {
         var dir = Path.GetDirectoryName(exe);
         if (dir is null) return exe;

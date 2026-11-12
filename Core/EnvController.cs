@@ -254,18 +254,27 @@ public static class EnvController
 
     public static void GoOfficial(AppConfig cfg, Action<string> log)
     {
-        // 先确认官服入口在，别清完环境才发现没得开
-        var launcher = cfg.OfficialLauncherPath;
-        if (launcher is null || !File.Exists(launcher)) launcher = cfg.OfficialFallbackPath;
-        if (launcher is null || !File.Exists(launcher))
-            throw new EnvException($"找不到官服启动器：{cfg.OfficialLauncherPath}");
+        // 先确认官服入口在，别清完环境才发现没得开。
+        // 官服根可能被填到 Launcher 那一层（D:\NIKKE\Launcher），也可能填盘符，
+        // 统一交给 ResolveOfficial，别在这里再写一条死路径 —— 设置页显示 √ 而这里报 ×，
+        // 就是两套判据打架。
+        var launcher = LauncherFinder.ResolveOfficial(cfg);
+        if (launcher is null)
+            throw new EnvException(
+                "找不到官服启动器：nikke_launcher.exe\r\n\r\n" +
+                $"已在 {cfg.OfficialRoot} 下试过 NIKKE\\Launcher、Launcher、根目录，以及 nikkeminiloader 兜底。\r\n" +
+                "官服根要填「含 NIKKE\\Launcher 的那一层」：\r\n" +
+                "  客户端在 D:\\NIKKE\\Launcher\\ → 填 D:\\NIKKE\r\n" +
+                "  客户端在 D:\\NIKKE\\NIKKE\\Launcher\\ → 填 D:\\");
 
         var s = Check(cfg);
 
         // 判断「官服是否在运行」必须带路径边界，否则 root=`D:\Game` 会把
         // `D:\Game\nikke153.6.10\...` 的私服客户端也算成官服，导致误报「官服已在运行」。
+        // 根可能被填到 Launcher 那一层，所以用启动器反推游戏根，别直接信 cfg.OfficialRoot。
+        var officialRoot = AppConfig.GameRootOf(launcher);
         var officialRunning = s.Processes.Any(p =>
-            ProcessScanner.IsClient(p.Name) && ProcessScanner.InRoot(p.Path, cfg.OfficialRoot));
+            ProcessScanner.IsClient(p.Name) && ProcessScanner.InRoot(p.Path, officialRoot));
 
         if (officialRunning && s.Mode == 0 && s.OfficialLobby > 0)
         {

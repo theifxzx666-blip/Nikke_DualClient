@@ -23,8 +23,22 @@ public static class ProcessScanner
         "assistant"
     };
 
+    /// <summary>
+    /// 永远不算客户端：
+    /// crashpad_handler 是 CEF/Electron 通用的崩溃上报进程（启动器、UU、QQ 都在用同一个名字，
+    /// 也常在启动器退出后变成孤儿）；GameViewer* 是网易 UU 加速器组件。
+    /// 把它们算成「要关的客户端」，用户就会遇到「明明全关了还被拦」。
+    /// </summary>
+    static readonly HashSet<string> Noise = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "crashpad_handler",
+        "gameviewer", "gameviewerservice", "gameviewerserver",
+        "gameviewerhealthd", "gameviewer_healthd"
+    };
+
     /// <summary>进程名是否属于游戏客户端。</summary>
-    public static bool IsClient(string processName) => ClientNames.Contains(processName);
+    public static bool IsClient(string processName) =>
+        ClientNames.Contains(processName) && !Noise.Contains(processName);
 
     /// <summary>
     /// 判断路径是否在某个根目录**内部**。必须带分隔符边界 ——
@@ -168,9 +182,8 @@ public static class ServerRunner
     /// <summary>启动客户端启动器。主入口缺失时用备用入口（官服有 miniloader 兜底）。</summary>
     public static void StartClient(AppConfig cfg, bool official)
     {
-        var exe = official ? cfg.OfficialLauncherPath : LauncherFinder.Resolve(cfg);
-        if (official && (exe is null || !File.Exists(exe)))
-            exe = cfg.OfficialFallbackPath;
+        // 官服的 miniloader 兜底已经收进 ResolveOfficial，这里不再单独判一次
+        var exe = official ? LauncherFinder.ResolveOfficial(cfg) : LauncherFinder.Resolve(cfg);
 
         if (exe is null || !File.Exists(exe))
             throw new FileNotFoundException($"找不到启动器：{exe}");

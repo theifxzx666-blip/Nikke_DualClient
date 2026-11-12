@@ -69,8 +69,7 @@ public static class EnvController
             OfficialRootOk = cfg.OfficialRoot is not null && Directory.Exists(cfg.OfficialRoot),
             PrivateRootOk = cfg.PrivateRoot is not null && Directory.Exists(cfg.PrivateRoot),
             ServerOk = cfg.ServerExePath is not null && File.Exists(cfg.ServerExePath),
-            OfficialLauncherOk = (cfg.OfficialLauncherPath is not null && File.Exists(cfg.OfficialLauncherPath))
-                                 || (cfg.OfficialFallbackPath is not null && File.Exists(cfg.OfficialFallbackPath)),
+            OfficialLauncherOk = LauncherFinder.ResolveOfficial(cfg) is not null,
             PrivateLauncherOk = LauncherFinder.Resolve(cfg) is not null,
             HostsBlock = HostsManager.HasBlock(lines),
             NewsHijacked = HostsManager.NewsDomainHijacked(lines),

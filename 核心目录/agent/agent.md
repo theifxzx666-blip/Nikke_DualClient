@@ -23,6 +23,16 @@
 - 决策：`ProcessScanner.IsClient` 排除 `crashpad_handler` 与 `GameViewer*`（网易 UU 加速器）。这两类进程在启动器退出后常成孤儿，算进「要关的客户端」会让用户永远切不了。
 - 验收：官服 off1(标准)/off2(少一层)/off3(miniloader)/off_empty 全符合；私服 case1~3 回归通过；真实 E 盘两个根都命中；`--diag` 两行 √；`--shot` 显示「启动器 正常 官服√ 私服√」。
 
+## 本轮（2026-11-12 v1.12.3 扫描根与进程收敛）
+- 现场配置 `OfficialRoot = D:\`（启动器在 `D:\NIKKE\Launcher`），原 `Roots` 直接拿用户填的根，等于把整个 D 盘算进进程扫描范围。
+- 决策：`Roots` 改用启动器所在目录反推游戏根（`…\NIKKEG\Launcher\x.exe` → `…\NIKKEG`），并把服务端目录单列一条；找不到启动器才退回用户填的根。诊断新增「扫描根」一行。
+- 决策：抽出 `ProcessScanner.MustClose`，状态行与拦截弹窗共用一套收敛 —— 现场 9 个客户端进程（launcher + 7 tbs_browser + intl_service）以前会显示「9 个」，弹窗却只列 1 个。
+- 验收：模拟配置 `OfficialRoot=D:\Codex\...\_launcher_test`，扫描根收窄为 `...\off2`；真实环境收窄为 `E:\[3]Nikke_global\NIKKE` / `E:\[3]Nikke\NIKKEG` / `E:\[3]Nikke\EpinelPS`。
+
+## 现场故障结论（2026-11-12 22:00）
+EpinelPS 四次启动（21:33 / 21:51:58 / 21:55:06 / 21:57:48）全部同一死法：客户端 `getserverinfo` 200 之后请求 `cache/prdenv/153-b55624c389/StandaloneWindows64/pck/latest-657.txt`，此后日志必断，下一次都是全新启动。
+本地缓存只有 `153-cb882d4b30`；回源时 `cloud.nikke-kr.com` 在 hosts 里被写死 `127.0.0.1`（诊断 `CdnLine`），EpinelPS 换用 `0.0.0.1:443` 报 SocketException 10051。→ 补资产这一步死掉，不是授权问题（auth.txt 机器码不匹配仍在，但四次都成功响应过请求）。
+
 ## 待办
 - [x] `dotnet build` 复核可编译（net8，0 警告 0 错误）
 - [ ] 切换/还原各跑一次，确认 hosts 与证书状态可回滚

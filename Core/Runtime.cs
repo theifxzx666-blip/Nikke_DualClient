@@ -13,14 +13,15 @@ public sealed record ProcInfo(int Id, string Name, string Path);
 /// </summary>
 public static class ProcessScanner
 {
+    /// <summary>
+    /// 只认真正的游戏进程。tbs_browser / intl_service / version_service / assistant
+    /// 都是启动器的子进程，启动器一关它们自己就退 —— 以前把它们算进来，
+    /// 结果是「明明只开着 QQ，却说你游戏没关」。宁可少拦，不能拦死。
+    /// </summary>
     static readonly HashSet<string> ClientNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "nikke",
-        "nikke_launcher",
-        "tbs_browser",
-        "intl_service",
-        "version_service",
-        "assistant"
+        "nikke_launcher"
     };
 
     /// <summary>

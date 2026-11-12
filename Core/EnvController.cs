@@ -69,9 +69,8 @@ public static class EnvController
             OfficialRootOk = cfg.OfficialRoot is not null && Directory.Exists(cfg.OfficialRoot),
             PrivateRootOk = cfg.PrivateRoot is not null && Directory.Exists(cfg.PrivateRoot),
             ServerOk = cfg.ServerExePath is not null && File.Exists(cfg.ServerExePath),
-            OfficialLauncherOk = (cfg.OfficialLauncherPath is not null && File.Exists(cfg.OfficialLauncherPath))
-                                 || (cfg.OfficialFallbackPath is not null && File.Exists(cfg.OfficialFallbackPath)),
-            PrivateLauncherOk = cfg.PrivateLauncherPath is not null && File.Exists(cfg.PrivateLauncherPath),
+            OfficialLauncherOk = LauncherFinder.ResolveOfficial(cfg) is not null,
+            PrivateLauncherOk = LauncherFinder.Resolve(cfg) is not null,
             HostsBlock = HostsManager.HasBlock(lines),
             NewsHijacked = HostsManager.NewsDomainHijacked(lines),
             CdnLine = HostsManager.FindCdnLine(lines),
@@ -149,12 +148,7 @@ public static class EnvController
 
         // launcher 开着的时候，tbs_browser / intl_service 都是它的子进程，
         // 列出来只会让用户以为要关八个东西
-        var hasLauncher = clients.Any(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase));
-        var meaningful = hasLauncher
-            ? clients.Where(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase)
-                                 || p.Name.Equals("nikke", StringComparison.OrdinalIgnoreCase)).ToList()
-            : clients;
-        if (meaningful.Count == 0) meaningful = clients;
+        var meaningful = ProcessScanner.MustClose(clients);
 
         var summary = string.Join("、", meaningful
             .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
@@ -179,15 +173,18 @@ public static class EnvController
                 "如果这台机器只玩官服，直接点「启动官服」就行。\r\n" +
                 "要玩单机的话，到「设置 → 路径」把私服根目录指对。");
 
-        if (cfg.PrivateLauncherPath is null || !File.Exists(cfg.PrivateLauncherPath))
+        // 不认死 NIKKEG：一键包里客户端目录可能叫 NIKKE，或被改名塞进自建目录
+        var launcher = LauncherFinder.Resolve(cfg);
+        if (launcher is null)
             throw new EnvException(
-                $"找不到私服客户端启动器：{cfg.PrivateLauncherPath}\r\n\r\n" +
-                "私服根目录下应该有 NIKKEG\\Launcher\\nikke_launcher.exe。\r\n" +
-                "路径不对的话到「设置 → 路径」重新指一下。");
+                "找不到私服客户端启动器：nikke_launcher.exe\r\n\r\n" +
+                $"已在 {cfg.PrivateRoot} 下试过 NIKKEG\\Launcher、NIKKE\\Launcher 等常见位置，" +
+                $"并向下找了 {LauncherFinder.Depth} 层。\r\n" +
+                "客户端装在别处的话，到「设置 → 路径」把私服根目录指到含 EpinelPS 与客户端的那一层。");
 
         var s = Check(cfg);
         var launcherRunning = s.Processes.Any(p =>
-            string.Equals(p.Path, cfg.PrivateLauncherPath, StringComparison.OrdinalIgnoreCase));
+            string.Equals(p.Path, launcher, StringComparison.OrdinalIgnoreCase));
 
         // 端口能连上但进程列表里没有 EpinelPS —— 443 被别人占了。
         // 这种情况下服务根本起不来，直接讲清楚比等 90 秒超时有用。
@@ -257,18 +254,27 @@ public static class EnvController
 
     public static void GoOfficial(AppConfig cfg, Action<string> log)
     {
-        // 先确认官服入口在，别清完环境才发现没得开
-        var launcher = cfg.OfficialLauncherPath;
-        if (launcher is null || !File.Exists(launcher)) launcher = cfg.OfficialFallbackPath;
-        if (launcher is null || !File.Exists(launcher))
-            throw new EnvException($"找不到官服启动器：{cfg.OfficialLauncherPath}");
+        // 先确认官服入口在，别清完环境才发现没得开。
+        // 官服根可能被填到 Launcher 那一层（D:\NIKKE\Launcher），也可能填盘符，
+        // 统一交给 ResolveOfficial，别在这里再写一条死路径 —— 设置页显示 √ 而这里报 ×，
+        // 就是两套判据打架。
+        var launcher = LauncherFinder.ResolveOfficial(cfg);
+        if (launcher is null)
+            throw new EnvException(
+                "找不到官服启动器：nikke_launcher.exe\r\n\r\n" +
+                $"已在 {cfg.OfficialRoot} 下试过 NIKKE\\Launcher、Launcher、根目录，以及 nikkeminiloader 兜底。\r\n" +
+                "官服根要填「含 NIKKE\\Launcher 的那一层」：\r\n" +
+                "  客户端在 D:\\NIKKE\\Launcher\\ → 填 D:\\NIKKE\r\n" +
+                "  客户端在 D:\\NIKKE\\NIKKE\\Launcher\\ → 填 D:\\");
 
         var s = Check(cfg);
 
         // 判断「官服是否在运行」必须带路径边界，否则 root=`D:\Game` 会把
         // `D:\Game\nikke153.6.10\...` 的私服客户端也算成官服，导致误报「官服已在运行」。
+        // 根可能被填到 Launcher 那一层，所以用启动器反推游戏根，别直接信 cfg.OfficialRoot。
+        var officialRoot = AppConfig.GameRootOf(launcher);
         var officialRunning = s.Processes.Any(p =>
-            ProcessScanner.IsClient(p.Name) && ProcessScanner.InRoot(p.Path, cfg.OfficialRoot));
+            ProcessScanner.IsClient(p.Name) && ProcessScanner.InRoot(p.Path, officialRoot));
 
         if (officialRunning && s.Mode == 0 && s.OfficialLobby > 0)
         {

@@ -13,18 +13,33 @@ public sealed record ProcInfo(int Id, string Name, string Path);
 /// </summary>
 public static class ProcessScanner
 {
+    /// <summary>
+    /// 只认真正的游戏进程。tbs_browser / intl_service / version_service / assistant
+    /// 都是启动器的子进程，启动器一关它们自己就退 —— 以前把它们算进来，
+    /// 结果是「明明只开着 QQ，却说你游戏没关」。宁可少拦，不能拦死。
+    /// </summary>
     static readonly HashSet<string> ClientNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "nikke",
-        "nikke_launcher",
-        "tbs_browser",
-        "intl_service",
-        "version_service",
-        "assistant"
+        "nikke_launcher"
+    };
+
+    /// <summary>
+    /// 永远不算客户端：
+    /// crashpad_handler 是 CEF/Electron 通用的崩溃上报进程（启动器、UU、QQ 都在用同一个名字，
+    /// 也常在启动器退出后变成孤儿）；GameViewer* 是网易 UU 加速器组件。
+    /// 把它们算成「要关的客户端」，用户就会遇到「明明全关了还被拦」。
+    /// </summary>
+    static readonly HashSet<string> Noise = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "crashpad_handler",
+        "gameviewer", "gameviewerservice", "gameviewerserver",
+        "gameviewerhealthd", "gameviewer_healthd"
     };
 
     /// <summary>进程名是否属于游戏客户端。</summary>
-    public static bool IsClient(string processName) => ClientNames.Contains(processName);
+    public static bool IsClient(string processName) =>
+        ClientNames.Contains(processName) && !Noise.Contains(processName);
 
     /// <summary>
     /// 判断路径是否在某个根目录**内部**。必须带分隔符边界 ——
@@ -42,6 +57,22 @@ public static class ProcessScanner
 
     public static bool InRoots(string path, string[] roots) =>
         roots.Any(r => InRoot(path, r));
+
+    /// <summary>
+    /// 真正需要用户关的进程。启动器在跑时 intl_service / tbs_browser 都是它的子进程，
+    /// 关掉主进程它们自己就退了；全列出来用户会以为要关九个。
+    /// 状态行和拦截弹窗都走这一套，避免一处说 9 个、一处说 1 个。
+    /// </summary>
+    public static List<ProcInfo> MustClose(IEnumerable<ProcInfo> clients)
+    {
+        var list = clients.ToList();
+        var hasLauncher = list.Any(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase));
+        if (!hasLauncher) return list;
+
+        var main = list.Where(p => p.Name.Equals("nikke_launcher", StringComparison.OrdinalIgnoreCase)
+                                   || p.Name.Equals("nikke", StringComparison.OrdinalIgnoreCase)).ToList();
+        return main.Count > 0 ? main : list;
+    }
 
     /// <summary>只挑客户端：先按进程名过滤，避免对几百个无关进程访问 MainModule。</summary>
     public static List<ProcInfo> FindClients(AppConfig cfg)
@@ -168,9 +199,8 @@ public static class ServerRunner
     /// <summary>启动客户端启动器。主入口缺失时用备用入口（官服有 miniloader 兜底）。</summary>
     public static void StartClient(AppConfig cfg, bool official)
     {
-        var exe = official ? cfg.OfficialLauncherPath : cfg.PrivateLauncherPath;
-        if (official && (exe is null || !File.Exists(exe)))
-            exe = cfg.OfficialFallbackPath;
+        // 官服的 miniloader 兜底已经收进 ResolveOfficial，这里不再单独判一次
+        var exe = official ? LauncherFinder.ResolveOfficial(cfg) : LauncherFinder.Resolve(cfg);
 
         if (exe is null || !File.Exists(exe))
             throw new FileNotFoundException($"找不到启动器：{exe}");

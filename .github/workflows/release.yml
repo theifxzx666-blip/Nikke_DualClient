@@ -1,0 +1,43 @@
+name: Release
+
+# 推 v* 标签时自动编译并发布。本地不用再手动打包上传。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 自包含单文件、win-x64 都写在 csproj 里，这里不用重复传参
+      - name: Publish
+        run: dotnet publish NikkeDualClient.csproj -c Release -o publish
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Compress-Archive `
+            -Path 'publish/NikkeDualClient.exe', 'docs/使用说明.txt' `
+            -DestinationPath "NikkeDualClient_$tag.zip" `
+            -CompressionLevel Optimal
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: NikkeDualClient_*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
